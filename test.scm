@@ -17,6 +17,15 @@
 (test* "curl-version" #t
        (regmatch? (#/^libcurl/  (curl-version))))
 
+(test* "curl-version-info: version is over 7.18.x" #t
+       (regmatch? (#/7\.1[89]\./ (cdr (assoc "version" (curl-version-info))))))
+
+(test* "curl-version-info: support http" #t
+       (regmatch? (#/\bhttp\b/ (cdr (assoc "protocols" (curl-version-info))))))
+
+(test* "curl-version-info: support https" #t
+       (regmatch? (#/\bhttps\b/ (cdr (assoc "protocols" (curl-version-info))))))
+
 (describe <curl-base>)
 
 (test* "curl-easy-init" #t
@@ -40,7 +49,7 @@
   (curl-easy-setopt c CURLOPT_INFILESIZE_LARGE (- CURLOPTTYPE_OFF_T 1)))
 
 (test* "curl-easy-setopt (set URL)" 0
-       (curl-easy-setopt c CURLOPT_URL "http://bitworking.org/projects/apptestsite/app.cgi/service/;service_document"))
+       (curl-easy-setopt c CURLOPT_URL "http://www.google.com/"))
 
 (test* "curl-easy-setopt (set timeout)" 0
         (curl-easy-setopt c CURLOPT_TIMEOUT 10))
@@ -62,165 +71,60 @@
        (curl-easy-getinfo c CURLINFO_RESPONSE_CODE))
 
 (test* "curl-easy-getinfo" #t
+       (curl-easy-getinfo c CURLINFO_EFFECTIVE_URL))
+
+(test* "curl-easy-getinfo" #t
        (curl-easy-getinfo c CURLINFO_CONTENT_TYPE))
+
+(test* "curl-easy-getinfo" #t
+       (curl-easy-getinfo c CURLINFO_COOKIELIST))
 
 (test* "curl-easy-duphandle" #t
        (is-a? (curl-easy-duphandle c) <curl-base>))
 
-(print CURLE_OK)
-(print CURLE_UNSUPPORTED_PROTOCOL)
-(print CURLE_FAILED_INIT)
-(print CURLE_URL_MALFORMAT)
-(print CURLE_COULDNT_RESOLVE_PROXY)
-(print CURLE_COULDNT_RESOLVE_HOST)
-(print CURLE_COULDNT_CONNECT)
-(print CURLE_FTP_WEIRD_SERVER_REPLY)
-(print CURLE_REMOTE_ACCESS_DENIED)
-(print CURLE_FTP_WEIRD_PASS_REPLY)
-(print CURLE_FTP_WEIRD_PASV_REPLY)
-(print CURLE_FTP_WEIRD_227_FORMAT)
-(print CURLE_FTP_CANT_GET_HOST)
-(print CURLE_FTP_COULDNT_SET_TYPE)
-(print CURLE_PARTIAL_FILE)
-(print CURLE_FTP_COULDNT_RETR_FILE)
-(print CURLE_QUOTE_ERROR)
-(print CURLE_HTTP_RETURNED_ERROR)
-(print CURLE_WRITE_ERROR)
-(print CURLE_UPLOAD_FAILED)
-(print CURLE_READ_ERROR)
-(print CURLE_OUT_OF_MEMORY)
-(print CURLE_OPERATION_TIMEDOUT)
-(print CURLE_FTP_PORT_FAILED)
-(print CURLE_FTP_COULDNT_USE_REST)
-(print CURLE_RANGE_ERROR)
-(print CURLE_HTTP_POST_ERROR)
-(print CURLE_SSL_CONNECT_ERROR)
-(print CURLE_BAD_DOWNLOAD_RESUME)
-(print CURLE_FILE_COULDNT_READ_FILE)
-(print CURLE_LDAP_CANNOT_BIND)
-(print CURLE_LDAP_SEARCH_FAILED)
-(print CURLE_FUNCTION_NOT_FOUND)
-(print CURLE_ABORTED_BY_CALLBACK)
-(print CURLE_BAD_FUNCTION_ARGUMENT)
-(print CURLE_INTERFACE_FAILED)
-(print CURLE_TOO_MANY_REDIRECTS)
-(print CURLE_UNKNOWN_TELNET_OPTION)
-(print CURLE_TELNET_OPTION_SYNTAX)
-(print CURLE_PEER_FAILED_VERIFICATION)
-(print CURLE_GOT_NOTHING)
-(print CURLE_SSL_ENGINE_NOTFOUND)
-(print CURLE_SSL_ENGINE_SETFAILED)
-(print CURLE_SEND_ERROR)
-(print CURLE_RECV_ERROR)
-(print CURLE_SSL_CERTPROBLEM)
-(print CURLE_SSL_CIPHER)
-(print CURLE_SSL_CACERT)
-(print CURLE_BAD_CONTENT_ENCODING)
-(print CURLE_LDAP_INVALID_URL)
-(print CURLE_FILESIZE_EXCEEDED)
-(print CURLE_USE_SSL_FAILED)
-(print CURLE_SEND_FAIL_REWIND)
-(print CURLE_SSL_ENGINE_INITFAILED)
-(print CURLE_LOGIN_DENIED)
-(print CURLE_TFTP_NOTFOUND)
-(print CURLE_TFTP_PERM)
-(print CURLE_REMOTE_DISK_FULL)
-(print CURLE_TFTP_ILLEGAL)
-(print CURLE_TFTP_UNKNOWNID)
-(print CURLE_REMOTE_FILE_EXISTS)
-(print CURLE_TFTP_NOSUCHUSER)
-(print CURLE_CONV_FAILED)
-(print CURLE_CONV_REQD)
-(print CURLE_SSL_CACERT_BADFILE)
-(print CURLE_REMOTE_FILE_NOT_FOUND)
-(print CURLE_SSH)
-(print CURLE_SSL_SHUTDOWN_FAILED)
-(print CURLE_AGAIN)
-(print CURL_LAST)
+(test* "curl-easy-strerror" #t
+        (curl-easy-strerror 0))
 
-(print CURLOPT_WRITEDATA)
-(print CURLOPT_WRITEFUNCTION)
-(print CURLOPT_READDATA)
-(print CURLOPT_READFUNCTION)
-(print CURLOPT_SEEKDATA)
-(print CURLOPT_SEEKFUNCTION)
-(print CURLOPT_INFILESIZE_LARGE)
-(print CURLOPT_URL)
-(print CURLOPT_PROXY)
-(print CURLOPT_NOPROGRESS)
-(print CURLOPT_HEADER)
-(print CURLOPT_FAILONERROR)
-(print CURLOPT_UPLOAD)
-(print CURLOPT_DIRLISTONLY)
-(print CURLOPT_APPEND)
-(print CURLOPT_NETRC)
-(print CURLOPT_FOLLOWLOCATION)
-(print CURLOPT_UNRESTRICTED_AUTH)
-(print CURLOPT_TRANSFERTEXT)
-(print CURLOPT_USERPWD)
-(print CURLOPT_PROXYUSERPWD)
-(print CURLOPT_RANGE)
-(print CURLOPT_ERRORBUFFER)
-(print CURLOPT_TIMEOUT)
-(print CURLOPT_REFERER)
-(print CURLOPT_AUTOREFERER)
-(print CURLOPT_USERAGENT)
-(print CURLOPT_FTPPORT)
-(print CURLOPT_LOW_SPEED_LIMIT)
-(print CURLOPT_LOW_SPEED_TIME)
-(print CURLOPT_MAX_SEND_SPEED_LARGE)
-(print CURLOPT_MAX_RECV_SPEED_LARGE)
-(print CURLOPT_RESUME_FROM_LARGE)
-(print CURLOPT_COOKIE)
-(print CURLOPT_HTTPHEADER)
-(print CURLOPT_SSLCERT)
-(print CURLOPT_SSLCERTTYPE)
-(print CURLOPT_SSLKEY)
-(print CURLOPT_SSLKEYTYPE)
-(print CURLOPT_KEYPASSWD)
-(print CURLOPT_SSH_PRIVATE_KEYFILE)
-(print CURLOPT_SSH_PUBLIC_KEYFILE)
-(print CURLOPT_SSH_HOST_PUBLIC_KEY_MD5)
-(print CURLOPT_SSL_VERIFYHOST)
-(print CURLOPT_MAXREDIRS)
-(print CURLOPT_CRLF)
-(print CURLOPT_QUOTE)
-(print CURLOPT_POSTQUOTE)
-(print CURLOPT_PREQUOTE)
-(print CURLOPT_WRITEHEADER)
-(print CURLOPT_COOKIEFILE)
-(print CURLOPT_COOKIESESSION)
-(print CURLOPT_SSLVERSION)
-(print CURLOPT_TIMECONDITION)
-(print CURLOPT_TIMEVALUE)
-(print CURLOPT_CUSTOMREQUEST)
-(print CURLOPT_STDERR)
-(print CURLOPT_HTTPPROXYTUNNEL)
-(print CURLOPT_INTERFACE)
-(print CURLOPT_KRBLEVEL)
-(print CURLOPT_TELNETOPTIONS)
-(print CURLOPT_RANDOM_FILE)
-(print CURLOPT_EGDSOCKET)
-(print CURLOPT_CONNECTTIMEOUT)
-(print CURLOPT_DEBUGFUNCTION)
-(print CURLOPT_DEBUGDATA)
-(print CURLOPT_VERBOSE)
-(print CURLOPT_ENCODING)
-(print CURLOPT_FTP_CREATE_MISSING_DIRS)
-(print CURLOPT_IPRESOLVE)
-(print CURLOPT_FTP_ACCOUNT)
-(print CURLOPT_IGNORE_CONTENT_LENGTH)
-(print CURLOPT_FTP_SKIP_PASV_IP)
-(print CURLOPT_FTP_FILEMETHOD)
-(print CURLOPT_FTP_ALTERNATIVE_TO_USER)
-(print CURLOPT_SSL_SESSIONID_CACHE)
-(print CURLOPT_SOCKOPTFUNCTION)
-(print CURLOPT_SOCKOPTDATA)
+(curl-easy-cleanup c)
+
+(define post-string "email=example@example.tld&password=example&type=regular&body=This_is_a_test3&private=1&format=markdown")
+(define c (curl-easy-init))
+
+(define s (curl-slist-init))
+
+(test* "curl-slist-init" #t
+       (is-a? (curl-slist-init) <curl-slist>))
+(test* "curl-slist-append 1" #t
+       (is-a? (curl-slist-append s "Content-Length: 103") <curl-slist>))
+(test* "curl-slist-append 2" #t
+       (is-a? (curl-slist-append s "Content-Type: application/x-www-form-urlencoded") <curl-slist>))
+(test* "curl-slist-append 3" #t
+       (is-a? (curl-slist-append s "X-hoge0: hoge") <curl-slist>))
+(test* "curl-slist-append 4" #t
+       (is-a?  (curl-slist-append s "X-gere0: gere") <curl-slist>))
+
+(curl-easy-setopt c CURLOPT_URL "http://www.tumblr.com/api/write/")
+(curl-easy-setopt c CURLOPT_VERBOSE 1)
+(curl-easy-setopt c CURLOPT_TIMEOUT 10)
+(curl-easy-setopt c CURLOPT_CUSTOMREQUEST "POST")
+#;(curl-easy-setopt c CURLOPT_PROXY "http://192.168.0.1:8080")
+#;(curl-easy-setopt c CURLOPT_POSTFIELDS post-string)
+;(curl-easy-setopt c CURLOPT_POSTFIELDSIZE 101)
+(curl-easy-setopt c CURLOPT_POSTFIELDSIZE_LARGE (- CURLOPTTYPE_OFF_T 1))
+;(curl-easy-setopt c CURLOPT_INFILESIZE 256)
+(curl-easy-setopt c CURLOPT_UPLOAD 0)
+(curl-easy-setopt c CURLOPT_HTTPHEADER s)
+(curl-bind-input-port c)
+(curl-bind-output-port c)
+
+(test* "post" ""
+       (with-output-to-string 
+	   (lambda () 
+	     (with-input-from-string post-string 
+	       (lambda () (curl-easy-perform c))))))
+
+(test* "post result" 201
+       (curl-easy-getinfo c CURLINFO_RESPONSE_CODE))
 
 ;; epilogue
 (test-end)
-
-
-
-
-

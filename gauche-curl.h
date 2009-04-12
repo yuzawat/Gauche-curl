@@ -19,16 +19,28 @@ extern ScmClass *ScmCurlClass;
 #define SCMCURL_UNBOX(obj) SCM_FOREIGN_POINTER_REF(CURL*, obj)
 #define SCMCURL_BOX(ptr) Scm_MakeForeignPointer(ScmCurlClass, ptr)
 
-/* <curl-version-info> */
-extern ScmClass *ScmCurl_VersionInfoClass;
-#define SCMCURL_VERSIONINFO_P(obj) SCM_XTYPEP(obj, Scmcurl_VersionInfoClass)
-#define SCMCURL_VERSIONINFO_UNBOX(obj) SCM_FOREIGN_POINTER_REF(curl_version_info_data*, obj)
-#define SCMCURL_VERSIONINFO_BOX(ptr) Scm_MakeForeignPointer(ScmCurl_VersionInfoClass, ptr)
+/* <curl-slist> */
+extern ScmClass *ScmCurl_SListClass;
+#define SCMCURL_SLIST_P(obj) SCM_XTYPEP(obj, ScmCurl_SListClass)
+#define SCMCURL_SLIST_UNBOX(obj) SCM_FOREIGN_POINTER_REF(struct curl_slist*, obj)
+#define SCMCURL_SLIST_BOX(ptr) Scm_MakeForeignPointer(ScmCurl_SListClass, ptr)
 
 /* bind stdio to port */
+//CURLOPT_WRITEFUNCTION 
 extern size_t write_to_port(void *buffer, size_t sz, size_t nmemb, void *stream);
+
+//CURLOPT_READFUNCTION
 extern size_t read_from_port(void *buffer, size_t sz, size_t nmemb, void *stream);
+
+//CURLOPT_DEBUGFUNCTION
 extern size_t write_to_err_port(void *buffer, size_t sz, size_t nmemb, void *stream);
+
+/* CURLOPT_IOCTLFUNCTION */
+/* CURLOPT_SEEKFUNCTION */
+/* CURLOPT_SOCKOPTFUNCTION */
+/* CURLOPT_OPENSOCKETFUNCTION */
+/* CURLOPT_PROGRESSFUNCTION */
+/* CURLOPT_HEADERFUNCTION */
 
 /*
  * The following entry is a dummy one.
@@ -36,6 +48,7 @@ extern size_t write_to_err_port(void *buffer, size_t sz, size_t nmemb, void *str
  */
 
 extern ScmObj test_curl(void);
+extern ScmObj curl_version_info_list(void);
 
 /* Epilogue */
 SCM_DECL_END

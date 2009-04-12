@@ -6,12 +6,12 @@
 #include \"gauche-curl.h\"
 
 "
-
-(define-type <curl-base> "CURL *" "curl"
+;; cURL handler
+(define-type <curl-base> "CURL*" "curl"
   "SCMCURL_P" "SCMCURL_UNBOX" "SCMCURL_BOX")
 
-(define-type <curl-version-info> "curl_version_info_data *" "curl-version-info"
-  "SCMCURL_VERSIONINFO_P" "SCMCURL_VERSIONINFO_UNBOX" "SCMCURL_VERSIONINFO_BOX")
+(define-type <curl-slist> "struct curl_slist*" "curl-slist"
+  "SCMCURL_SLIST_P" "SCMCURL_SLIST_UNBOX" "SCMCURL_SLIST_BOX")
 
 (define-cproc curl-easy-init ()
   (body <curl-base>
@@ -33,6 +33,8 @@
 	"  SCM_RESULT = curl_easy_setopt(hnd, curlopt, SCM_INT_VALUE(param));"
 	"} else if (SCM_STRINGP(param)) {"
 	"  SCM_RESULT = curl_easy_setopt(hnd, curlopt, SCM_STRING_CONST_CSTRING(param));"
+	"} else if (SCMCURL_SLIST_P(param)) {"
+	"  SCM_RESULT = curl_easy_setopt(hnd, curlopt, SCMCURL_SLIST_UNBOX(param));"
 	"} else if (SCM_FALSEP(param)) {"
 	"  SCM_RESULT = curl_easy_setopt(hnd, curlopt, NULL);"
 	"} else {"
@@ -78,15 +80,18 @@
         "  rc = curl_easy_getinfo(hnd, info, &result);"
 	"  if ( rc == 0) {"
 	"    SCM_RESULT = SCM_MAKE_STR_COPYING(result);"
+	"  } else {"
+	"    SCM_RESULT = SCM_FALSE;"
 	"  }"
 	"} else if (info == CURLINFO_SSL_ENGINES ||"
 	"           info == CURLINFO_COOKIELIST ) {"
-	"  (char*)result;"
+	"  (struct curl_slist*)result;"
         "  rc = curl_easy_getinfo(hnd, info, &result);"
 	"  if ( rc == 0) {"
-	"    SCM_RESULT = SCM_MAKE_STR_COPYING(result);"
+	"    SCM_RESULT = SCMCURL_SLIST_BOX(result);"
+	"  } else {"
+	"    SCM_RESULT = SCM_FALSE;"
 	"  }"
-        "  rc = curl_easy_getinfo(hnd, info, result);"
 	"} else if (info == CURLINFO_RESPONSE_CODE ||"
 	"           info == CURLINFO_HEADER_SIZE ||"
 	"           info == CURLINFO_REQUEST_SIZE ||"
@@ -103,14 +108,34 @@
         "  rc = curl_easy_getinfo(hnd, info, &result);"
 	"  if ( rc == 0) {"
 	"    SCM_RESULT = SCM_MAKE_INT(result);"
+	"  } else {"
+	"    SCM_RESULT = SCM_FALSE;"
 	"  }"
 	"} else {"
 	"  (double*)result;"
         "  rc = curl_easy_getinfo(hnd, info, &result);"
 	"  if ( rc == 0) {"
 	"    SCM_RESULT = SCM_MAKE_INT(result);"
+	"  } else {"
+	"    SCM_RESULT = SCM_FALSE;"
 	"  }"
 	"}"))
+
+(define-cproc curl-easy-strerror (errno::<int>)
+  (call <const-cstring> 
+	"curl_easy_strerror(errno);"))
+
+(define-cproc curl-slist-init ()
+  (body <curl-slist> 
+	"SCM_RESULT = SCM_NEW_ATOMIC2(struct curl_slist*, sizeof(struct curl_slist));"))
+
+(define-cproc curl-slist-append (list::<curl-slist> str::<string>)
+  (body <curl-slist> 
+	"SCM_RESULT = curl_slist_append(list, SCM_STRING_CONST_CSTRING(str));"))
+
+#;(define-cproc curl-slist-free-all (list::<curl-slist>)
+  (call  <void> 
+	"curl_slist_free_all(list);"))
 
 ; uri string escape
 (define-cproc curl-easy-escape (hnd::<curl-base> str::<string> length::<int>)
@@ -122,122 +147,182 @@
   (call <const-cstring> 
 	"curl_easy_unescape(hnd, Scm_GetStringConst(str), SCM_INT_VALUE(length), (int*)SCM_INT_VALUE(outlength));"))
 
+(define-cproc curl-free (str::<string>)
+  (call <void>
+	"curl_free(str);"))
+
 ; cURL version
 (define-cproc curl-version ()
   (call <const-cstring> "curl_version"))
 
 ; cURL version info
-(define-cproc curl-version-info-base (type::<int>)
-  (body <curl-version-info> 
-	"SCM_RESULT = curl_version_info(SCM_INT_VALUE(type));"))
-
-;; data->version
-;; data->version_num
-;; data->host
-;; data->features
-;; data->ssl_version
-;; data->ssl_version_num
-;; data->libz_version
-;; data->protocols
-
-;; if (data->age > 1)
-;; data->ares
-;; data->ares_num
-
-;; if (data->age > 2)
-;; data->libidn
-
-;; if (data->age > 3)
-;; data->iconv_ver_num
-;; data->libssh_version
-
-;; The following entry is a dummy one.
-;; Replace it for your definitions.
+(define-cproc curl-version-info ()
+  (call <list>
+	"curl_version_info_list"))
 
 (define-cproc test-curl ()
   (return "test_curl"))
 
 
 ;; CURLoption
-(define-enum CURLOPT_WRITEDATA)
-(define-enum CURLOPT_WRITEFUNCTION)
-(define-enum CURLOPT_READDATA)
-(define-enum CURLOPT_READFUNCTION)
-(define-enum CURLOPT_SEEKDATA)
-(define-enum CURLOPT_SEEKFUNCTION)
-(define-enum CURLOPT_INFILESIZE_LARGE)
+(define-enum CURLOPT_FILE)
 (define-enum CURLOPT_URL)
+(define-enum CURLOPT_PORT)
 (define-enum CURLOPT_PROXY)
-(define-enum CURLOPT_NOPROGRESS)
-(define-enum CURLOPT_HEADER)
-(define-enum CURLOPT_FAILONERROR)
-(define-enum CURLOPT_UPLOAD)
-(define-enum CURLOPT_DIRLISTONLY)
-(define-enum CURLOPT_APPEND)
-(define-enum CURLOPT_NETRC)
-(define-enum CURLOPT_FOLLOWLOCATION)
-(define-enum CURLOPT_UNRESTRICTED_AUTH)
-(define-enum CURLOPT_TRANSFERTEXT)
 (define-enum CURLOPT_USERPWD)
 (define-enum CURLOPT_PROXYUSERPWD)
 (define-enum CURLOPT_RANGE)
+(define-enum CURLOPT_INFILE)
 (define-enum CURLOPT_ERRORBUFFER)
+(define-enum CURLOPT_WRITEFUNCTION)
+(define-enum CURLOPT_READFUNCTION)
 (define-enum CURLOPT_TIMEOUT)
+(define-enum CURLOPT_INFILESIZE)
+(define-enum CURLOPT_POSTFIELDS)
 (define-enum CURLOPT_REFERER)
-(define-enum CURLOPT_AUTOREFERER)
-(define-enum CURLOPT_USERAGENT)
 (define-enum CURLOPT_FTPPORT)
+(define-enum CURLOPT_USERAGENT)
 (define-enum CURLOPT_LOW_SPEED_LIMIT)
 (define-enum CURLOPT_LOW_SPEED_TIME)
-(define-enum CURLOPT_MAX_SEND_SPEED_LARGE)
-(define-enum CURLOPT_MAX_RECV_SPEED_LARGE)
-(define-enum CURLOPT_RESUME_FROM_LARGE)
+(define-enum CURLOPT_RESUME_FROM)
 (define-enum CURLOPT_COOKIE)
 (define-enum CURLOPT_HTTPHEADER)
+(define-enum CURLOPT_HTTPPOST)
 (define-enum CURLOPT_SSLCERT)
-(define-enum CURLOPT_SSLCERTTYPE)
-(define-enum CURLOPT_SSLKEY)
-(define-enum CURLOPT_SSLKEYTYPE)
 (define-enum CURLOPT_KEYPASSWD)
-(define-enum CURLOPT_SSH_PRIVATE_KEYFILE)
-(define-enum CURLOPT_SSH_PUBLIC_KEYFILE)
-(define-enum CURLOPT_SSH_HOST_PUBLIC_KEY_MD5)
-(define-enum CURLOPT_SSL_VERIFYHOST)
-(define-enum CURLOPT_MAXREDIRS)
 (define-enum CURLOPT_CRLF)
 (define-enum CURLOPT_QUOTE)
-(define-enum CURLOPT_POSTQUOTE)
-(define-enum CURLOPT_PREQUOTE)
 (define-enum CURLOPT_WRITEHEADER)
 (define-enum CURLOPT_COOKIEFILE)
-(define-enum CURLOPT_COOKIESESSION)
 (define-enum CURLOPT_SSLVERSION)
 (define-enum CURLOPT_TIMECONDITION)
 (define-enum CURLOPT_TIMEVALUE)
 (define-enum CURLOPT_CUSTOMREQUEST)
 (define-enum CURLOPT_STDERR)
+(define-enum CURLOPT_POSTQUOTE)
+(define-enum CURLOPT_WRITEINFO)
+(define-enum CURLOPT_VERBOSE)
+(define-enum CURLOPT_HEADER)
+(define-enum CURLOPT_NOPROGRESS)
+(define-enum CURLOPT_NOBODY)
+(define-enum CURLOPT_FAILONERROR)
+(define-enum CURLOPT_UPLOAD)
+(define-enum CURLOPT_POST)
+(define-enum CURLOPT_DIRLISTONLY)
+(define-enum CURLOPT_APPEND)
+(define-enum CURLOPT_NETRC)
+(define-enum CURLOPT_FOLLOWLOCATION)
+(define-enum CURLOPT_TRANSFERTEXT)
+(define-enum CURLOPT_PUT)
+(define-enum CURLOPT_PROGRESSFUNCTION)
+(define-enum CURLOPT_PROGRESSDATA)
+(define-enum CURLOPT_AUTOREFERER)
+(define-enum CURLOPT_PROXYPORT)
+(define-enum CURLOPT_POSTFIELDSIZE)
 (define-enum CURLOPT_HTTPPROXYTUNNEL)
 (define-enum CURLOPT_INTERFACE)
 (define-enum CURLOPT_KRBLEVEL)
+(define-enum CURLOPT_SSL_VERIFYPEER)
+(define-enum CURLOPT_CAINFO)
+(define-enum CURLOPT_MAXREDIRS)
+(define-enum CURLOPT_FILETIME)
 (define-enum CURLOPT_TELNETOPTIONS)
+(define-enum CURLOPT_MAXCONNECTS)
+(define-enum CURLOPT_CLOSEPOLICY)
+(define-enum CURLOPT_FRESH_CONNECT)
+(define-enum CURLOPT_FORBID_REUSE)
 (define-enum CURLOPT_RANDOM_FILE)
 (define-enum CURLOPT_EGDSOCKET)
 (define-enum CURLOPT_CONNECTTIMEOUT)
+(define-enum CURLOPT_HEADERFUNCTION)
+(define-enum CURLOPT_HTTPGET)
+(define-enum CURLOPT_SSL_VERIFYHOST)
+(define-enum CURLOPT_COOKIEJAR)
+(define-enum CURLOPT_SSL_CIPHER_LIST)
+(define-enum CURLOPT_HTTP_VERSION)
+(define-enum CURLOPT_FTP_USE_EPSV)
+(define-enum CURLOPT_SSLCERTTYPE)
+(define-enum CURLOPT_SSLKEY)
+(define-enum CURLOPT_SSLKEYTYPE)
+(define-enum CURLOPT_SSLENGINE)
+(define-enum CURLOPT_SSLENGINE_DEFAULT)
+(define-enum CURLOPT_DNS_USE_GLOBAL_CACHE)
+(define-enum CURLOPT_DNS_CACHE_TIMEOUT)
+(define-enum CURLOPT_PREQUOTE)
 (define-enum CURLOPT_DEBUGFUNCTION)
 (define-enum CURLOPT_DEBUGDATA)
-(define-enum CURLOPT_VERBOSE)
+(define-enum CURLOPT_COOKIESESSION)
+(define-enum CURLOPT_CAPATH)
+(define-enum CURLOPT_BUFFERSIZE)
+(define-enum CURLOPT_NOSIGNAL)
+(define-enum CURLOPT_SHARE)
+(define-enum CURLOPT_PROXYTYPE)
 (define-enum CURLOPT_ENCODING)
+(define-enum CURLOPT_PRIVATE)
+(define-enum CURLOPT_HTTP200ALIASES)
+(define-enum CURLOPT_UNRESTRICTED_AUTH)
+(define-enum CURLOPT_FTP_USE_EPRT)
+(define-enum CURLOPT_HTTPAUTH)
+(define-enum CURLOPT_SSL_CTX_FUNCTION)
+(define-enum CURLOPT_SSL_CTX_DATA)
 (define-enum CURLOPT_FTP_CREATE_MISSING_DIRS)
+(define-enum CURLOPT_PROXYAUTH)
+(define-enum CURLOPT_FTP_RESPONSE_TIMEOUT)
 (define-enum CURLOPT_IPRESOLVE)
+(define-enum CURLOPT_MAXFILESIZE)
+(define-enum CURLOPT_INFILESIZE_LARGE)
+(define-enum CURLOPT_RESUME_FROM_LARGE)
+(define-enum CURLOPT_MAXFILESIZE_LARGE)
+(define-enum CURLOPT_NETRC_FILE)
+(define-enum CURLOPT_USE_SSL)
+(define-enum CURLOPT_POSTFIELDSIZE_LARGE)
+(define-enum CURLOPT_TCP_NODELAY)
+(define-enum CURLOPT_FTPSSLAUTH)
+(define-enum CURLOPT_IOCTLFUNCTION)
+(define-enum CURLOPT_IOCTLDATA)
 (define-enum CURLOPT_FTP_ACCOUNT)
+(define-enum CURLOPT_COOKIELIST)
 (define-enum CURLOPT_IGNORE_CONTENT_LENGTH)
 (define-enum CURLOPT_FTP_SKIP_PASV_IP)
 (define-enum CURLOPT_FTP_FILEMETHOD)
+(define-enum CURLOPT_LOCALPORT)
+(define-enum CURLOPT_LOCALPORTRANGE)
+(define-enum CURLOPT_CONNECT_ONLY)
+(define-enum CURLOPT_CONV_FROM_NETWORK_FUNCTION)
+(define-enum CURLOPT_CONV_TO_NETWORK_FUNCTION)
+(define-enum CURLOPT_CONV_FROM_UTF8_FUNCTION)
+(define-enum CURLOPT_MAX_SEND_SPEED_LARGE)
+(define-enum CURLOPT_MAX_RECV_SPEED_LARGE)
 (define-enum CURLOPT_FTP_ALTERNATIVE_TO_USER)
-(define-enum CURLOPT_SSL_SESSIONID_CACHE)
 (define-enum CURLOPT_SOCKOPTFUNCTION)
 (define-enum CURLOPT_SOCKOPTDATA)
-(define-enum-conditionally CURLOPT_POSTREDIR) ; (>= 7.19)
+(define-enum CURLOPT_SSL_SESSIONID_CACHE)
+(define-enum CURLOPT_SSH_AUTH_TYPES)
+(define-enum CURLOPT_SSH_PUBLIC_KEYFILE)
+(define-enum CURLOPT_SSH_PRIVATE_KEYFILE)
+(define-enum CURLOPT_FTP_SSL_CCC)
+(define-enum CURLOPT_TIMEOUT_MS)
+(define-enum CURLOPT_CONNECTTIMEOUT_MS)
+(define-enum CURLOPT_HTTP_TRANSFER_DECODING)
+(define-enum CURLOPT_HTTP_CONTENT_DECODING)
+(define-enum CURLOPT_NEW_FILE_PERMS)
+(define-enum CURLOPT_NEW_DIRECTORY_PERMS)
+(define-enum-conditionally CURLOPT_POSTREDIR)
+(define-enum CURLOPT_SSH_HOST_PUBLIC_KEY_MD5)
+(define-enum CURLOPT_OPENSOCKETFUNCTION)
+(define-enum CURLOPT_OPENSOCKETDATA)
+(define-enum CURLOPT_COPYPOSTFIELDS)
+(define-enum CURLOPT_PROXY_TRANSFER_MODE)
+(define-enum CURLOPT_SEEKFUNCTION)
+(define-enum CURLOPT_SEEKDATA)
+(define-enum-conditionally CURLOPT_CRLFILE)
+(define-enum-conditionally CURLOPT_ISSUERCERT)
+(define-enum-conditionally CURLOPT_ADDRESS_SCOPE)
+(define-enum-conditionally CURLOPT_CERTINFO)
+(define-enum-conditionally CURLOPT_USERNAME)
+(define-enum-conditionally CURLOPT_PASSWORD)
+(define-enum-conditionally CURLOPT_PROXYUSERNAME)
+(define-enum-conditionally CURLOPT_PROXYPASSWORD)
 
 (define-enum CURLOPTTYPE_OFF_T)
 
