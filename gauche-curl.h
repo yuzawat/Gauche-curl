@@ -32,8 +32,9 @@ extern size_t write_to_port(void *buffer, size_t sz, size_t nmemb, void *stream)
 //CURLOPT_READFUNCTION
 extern size_t read_from_port(void *buffer, size_t sz, size_t nmemb, void *stream);
 
-//CURLOPT_DEBUGFUNCTION
-extern size_t write_to_err_port(void *buffer, size_t sz, size_t nmemb, void *stream);
+extern struct curl_slist *list_to_curl_slist (ScmObj ls);
+
+extern ScmObj curl_slist_to_list (struct curl_slist *slist);
 
 /* CURLOPT_IOCTLFUNCTION */
 /* CURLOPT_SEEKFUNCTION */

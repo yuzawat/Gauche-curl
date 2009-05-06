@@ -41,6 +41,14 @@
 	"  SCM_RESULT = CURLE_GOT_NOTHING;"
 	"}"))
 
+;;  require curl_slist
+;;   CURLOPT_HTTPHEADER
+;;   CURLOPT_HTTP200ALIASES
+;;   CURLOPT_PREQUOTE
+;;   CURLOPT_QUOTE
+;;   CURLOPT_POSTQUOTE
+;;   CURLOPT_TELNETOPTIONS
+
 (define-cproc curl-bind-input-port (hnd::<curl-base>)
   (body <int>
 	"SCM_RESULT = curl_easy_setopt(hnd, CURLOPT_READFUNCTION, read_from_port);"))
@@ -88,7 +96,7 @@
 	"  (struct curl_slist*)result;"
         "  rc = curl_easy_getinfo(hnd, info, &result);"
 	"  if ( rc == 0) {"
-	"    SCM_RESULT = SCMCURL_SLIST_BOX(result);"
+	"    SCM_RESULT = curl_slist_to_list(result);"
 	"  } else {"
 	"    SCM_RESULT = SCM_FALSE;"
 	"  }"
@@ -125,31 +133,30 @@
   (call <const-cstring> 
 	"curl_easy_strerror(errno);"))
 
-(define-cproc curl-slist-init ()
+; curl_slist_append:      not implement
+; curl_slist_free_all:    not implement
+;; Implemation of curl_slist_append() is difficult. And I gave up.
+;; These functions are instead of it
+(define-cproc list->curl-slist (ls::<list>)
   (body <curl-slist> 
-	"SCM_RESULT = SCM_NEW_ATOMIC2(struct curl_slist*, sizeof(struct curl_slist));"))
+	"SCM_RESULT = list_to_curl_slist(ls);"))
 
-(define-cproc curl-slist-append (list::<curl-slist> str::<string>)
-  (body <curl-slist> 
-	"SCM_RESULT = curl_slist_append(list, SCM_STRING_CONST_CSTRING(str));"))
-
-#;(define-cproc curl-slist-free-all (list::<curl-slist>)
-  (call  <void> 
-	"curl_slist_free_all(list);"))
+(define-cproc curl-slist->list (slist::<curl-slist>)
+  (body <list>
+	"SCM_RESULT = curl_slist_to_list(slist);"))
 
 ; uri string escape
-(define-cproc curl-easy-escape (hnd::<curl-base> str::<string> length::<int>)
+(define-cproc curl-easy-escape (hnd::<curl-base> str::<const-cstring> length::<int>)
   (call <const-cstring> 
-	"curl_easy_escape(hnd, Scm_GetStringConst(str), SCM_INT_VALUE(length));"))
+	"curl_easy_escape(hnd, str, SCM_INT_VALUE(length));"))
 
 ; uri string unescape
-(define-cproc curl-easy-unescape (hnd::<curl-base> str::<string> length::<int> outlength::<int>)
+(define-cproc curl-easy-unescape (hnd::<curl-base> str::<const-cstring> length::<int> outlength::<int>)
   (call <const-cstring> 
-	"curl_easy_unescape(hnd, Scm_GetStringConst(str), SCM_INT_VALUE(length), (int*)SCM_INT_VALUE(outlength));"))
+	"curl_easy_unescape(hnd, str, SCM_INT_VALUE(length), (int*)SCM_INT_VALUE(outlength));"))
 
 (define-cproc curl-free (str::<string>)
-  (call <void>
-	"curl_free(str);"))
+  (call <void> "curl_free(str);"))
 
 ; cURL version
 (define-cproc curl-version ()
@@ -157,12 +164,10 @@
 
 ; cURL version info
 (define-cproc curl-version-info ()
-  (call <list>
-	"curl_version_info_list"))
+  (call <list> "curl_version_info_list"))
 
 (define-cproc test-curl ()
   (return "test_curl"))
-
 
 ;; CURLoption
 (define-enum CURLOPT_FILE)

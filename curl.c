@@ -27,43 +27,26 @@ static void curl_cleanup(ScmObj obj)
   curl_easy_cleanup(hnd);
 }
 
-static void curl_slist_cleanup(ScmObj obj)
-{
-  struct curl_slist *list = SCMCURL_SLIST_UNBOX(obj);
-  curl_slist_free_all(list);
-}
-
-struct OutStruct {
-  char *filename;
-  FILE *stream;
-  struct Configurable *config;
-  curl_off_t bytes; /* amount written so far */
-  curl_off_t init;  /* original size (non-zero when appending) */
-};
+extern ScmObj *OUTPORT = NULL;
 
 /* write to port */
 size_t write_to_port(void *buffer, size_t sz, size_t nmemb, void *stream)
 {
+  ScmObj oport;
+  if (OUTPORT) {
+    oport = OUTPORT;
+  } else {
+    oport = SCM_CUROUT;
+  }
   size_t rc;
-  if (SCM_OPORTP(SCM_CUROUT)) {
+  if (SCM_OPORTP(oport)) {
       Scm_Write(SCM_MAKE_STR_COPYING(buffer),
-		SCM_OBJ(SCM_CUROUT),
+		SCM_OBJ(oport),
 		SCM_WRITE_DISPLAY); 
       rc = sz * nmemb;
   } else {
     rc =  0;
   }
-  return rc;
-}
-
-/* write to error port */
-size_t write_to_err_port(void *buffer, size_t sz, size_t nmemb, void *stream)
-{
-  size_t rc;
-  Scm_Write(SCM_MAKE_STR_COPYING(buffer),
-	    SCM_OBJ(SCM_CURERR),
-	    SCM_WRITE_DISPLAY);
-  rc = sz * nmemb;
   return rc;
 }
 
@@ -103,16 +86,26 @@ size_t write_to_err_port(void *buffer, size_t sz, size_t nmemb, void *stream)
 /*   return rc; */
 /* }}} */
 
+extern ScmObj INPORT = NULL;
+
 /* read from port */
 size_t read_from_port(void *buffer, size_t sz, size_t nmemb, void *userp)
 {
-  size_t rc = 0;
-  ScmObj curl_input;
-  ScmString* instr;
-  curl_input = Scm_Read(SCM_OBJ(SCM_CURIN));
-  instr = SCM_STRING(curl_input);
-  buffer = Scm_GetString(instr);
-  rc = sz * nmemb;
+  ScmObj iport;
+  if (INPORT) {
+    iport = INPORT;
+  } else {
+    iport = SCM_CURIN;
+  }
+  size_t rc;
+  ScmString *curl_input;
+  curl_input = Scm_Read(SCM_OBJ(iport));
+  if (SCM_STRINGP(SCM_STRING(curl_input))) {
+    buffer = strdup(Scm_GetStringConst(SCM_STRING(curl_input)));
+    rc = sz * nmemb;
+  } else {
+    rc = 0;
+  }
   return rc;
 }
 
@@ -128,41 +121,28 @@ size_t read_from_port(void *buffer, size_t sz, size_t nmemb, void *userp)
 /*   return (size_t)rc; */
 /* } */
 
-size_t header_to_port( void *buffer, size_t sz, size_t nmemb, void *stream)
-{
-  size_t rc;
-
-  return rc;
-}
-
 /* curl_version_info() return version & features as alist */
 ScmObj curl_version_info_list(void)
 {
   int ver = CURLVERSION_NOW;
   curl_version_info_data* data;
-  ScmObj info_list;
+  ScmObj info_list = SCM_NIL, last = SCM_NIL;
   data = curl_version_info(ver);
-  info_list = Scm_Cons(Scm_Cons(SCM_MAKE_STR_COPYING("version"), 
-				SCM_MAKE_STR_COPYING(data->version)),
-		       SCM_NIL);
-  info_list = Scm_Append2(info_list, 
-			  Scm_MakeList(1, Scm_Cons(SCM_MAKE_STR_COPYING("version_number"), 
-						   SCM_MAKE_INT(data->version_num))));
-  info_list = Scm_Append2(info_list, 
-			  Scm_MakeList(1, Scm_Cons(SCM_MAKE_STR_COPYING("host"), 
-						   SCM_MAKE_STR_COPYING(data->host))));
-  if (data->ssl_version) { 
-    info_list = Scm_Append2(info_list, 
-			    Scm_MakeList(1, Scm_Cons(SCM_MAKE_STR_COPYING("ssl_version"), 
-						     SCM_MAKE_STR_COPYING(data->ssl_version))));
-    info_list = Scm_Append2(info_list, 
-			    Scm_MakeList(1, Scm_Cons(SCM_MAKE_STR_COPYING("ssl_version_number"), 
-						     SCM_MAKE_INT(data->ssl_version_num))));
+  SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("version"),
+					SCM_MAKE_STR_COPYING(data->version)));
+  SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("version_number"),
+					SCM_MAKE_INT(data->version_num)));
+  SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("host"),
+					SCM_MAKE_STR_COPYING(data->host)));
+  if (data->ssl_version) {
+    SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("ssl_version"),
+					  SCM_MAKE_STR_COPYING(data->ssl_version)));
+    SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("ssl_version_number"),
+					  SCM_MAKE_INT(data->ssl_version_num)));
   }
   if (data->libz_version) {
-    info_list = Scm_Append2(info_list, 
-			    Scm_MakeList(1, Scm_Cons(SCM_MAKE_STR_COPYING("libz_version"), 
-						     SCM_MAKE_STR_COPYING(data->libz_version))));
+    SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("libz_version"),
+					  SCM_MAKE_STR_COPYING(data->libz_version)));
   }
   if (data->protocols) {
     char pstr[128];
@@ -172,9 +152,8 @@ ScmObj curl_version_info_list(void)
       if (pstr[0] != '\0') strcat(pstr, " ");
       strcat(pstr, *name);
     }
-    info_list = Scm_Append2(info_list,
-			    Scm_MakeList(1, Scm_Cons(SCM_MAKE_STR_COPYING("protocols"), 
-						     SCM_MAKE_STR_COPYING(pstr))));
+    SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("protocols"),
+					  SCM_MAKE_STR_COPYING(pstr)));
   }
   if (data->features) {
     unsigned int i;
@@ -205,40 +184,77 @@ ScmObj curl_version_info_list(void)
 	strcat(fstr, feats[i].name);
       }
     }
-    info_list = Scm_Append2(info_list,
-			    Scm_MakeList(1, Scm_Cons(SCM_MAKE_STR_COPYING("features"),
-						     SCM_MAKE_STR_COPYING(fstr))));
+    SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("features"),
+					  SCM_MAKE_STR_COPYING(fstr)));
   }
   if (data->age >= CURLVERSION_SECOND) {
     if (data->ares) {
-      info_list = Scm_Append2(info_list,
-			      Scm_MakeList(1, Scm_Cons(SCM_MAKE_STR_COPYING("ares"), 
-						       SCM_MAKE_STR_COPYING(data->ares))));
-      info_list = Scm_Append2(info_list, 
-			      Scm_MakeList(1, Scm_Cons(SCM_MAKE_STR_COPYING("ares_num"), 
-						       SCM_MAKE_INT(data->ares_num))));
+      SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("ares"),
+					    SCM_MAKE_STR_COPYING(data->ares)));
+      SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("ares_num"),
+					    SCM_MAKE_INT(data->ares_num)));
     }
   }
   if (data->age >= CURLVERSION_THIRD) {
     if (data->libidn) {
-      info_list = Scm_Append2(info_list,
-			      Scm_MakeList(1, Scm_Cons(SCM_MAKE_STR_COPYING("libidn"), 
-						       SCM_MAKE_STR_COPYING(data->libidn))));
+      SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("libidn"),
+					    SCM_MAKE_STR_COPYING(data->libidn)));
     }
   }
   if (data->age >= CURLVERSION_FOURTH) {
     if (data->iconv_ver_num) {
-      info_list = Scm_Append2(info_list,
-			      Scm_MakeList(1, Scm_Cons(SCM_MAKE_STR_COPYING("iconv_ver_num"), 
-						       SCM_MAKE_INT(data->iconv_ver_num))));
+      SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("iconv_ver_num"),
+					    SCM_MAKE_INT(data->iconv_ver_num)));
     }
     if (data->libssh_version) {
-      info_list = Scm_Append2(info_list,
-			      Scm_MakeList(1, Scm_Cons(SCM_MAKE_STR_COPYING("libssh_version"), 
-						       SCM_MAKE_STR_COPYING(data->libssh_version))));
+      SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("libssh_version"),
+					    SCM_MAKE_STR_COPYING(data->libssh_version)));
     }
   }
   return info_list;
+}
+
+struct curl_slist *list_to_curl_slist (ScmObj ls)
+{
+  struct curl_slist *slist, *last, *next;
+  ScmObj str;
+  slist = SCM_NEW(struct curl_slist);
+  last = SCM_NEW(struct curl_slist);
+  SCM_FOR_EACH(str, ls){
+    if (!slist->data) {
+      slist->data = strdup(Scm_GetStringConst(SCM_STRING(SCM_CAR(str))));
+      slist->next = NULL;
+    } else {
+      next = SCM_NEW(struct curl_slist);
+      next->data = strdup(Scm_GetStringConst(SCM_STRING(SCM_CAR(str))));
+      next->next = NULL;
+      last = slist;
+      while (last->next) {
+	last = last->next;
+      }
+      last->next = next;
+    }
+  }
+  return slist;
+}
+
+ScmObj curl_slist_to_list (struct curl_slist *slist)
+{
+  ScmObj head = SCM_NIL, tail = SCM_NIL;
+  struct curl_slist *next;
+  int i = 0, j = 0;
+  next = SCM_NEW(struct curl_slist);
+  next = slist;
+  while (next->next) {
+    i++;
+    next = next->next;
+  }
+  next = slist;
+  for (; j <= i; j++) {
+    SCM_APPEND1(head, tail, SCM_MAKE_STR_COPYING(next->data));
+    next = next->next;
+  }
+  return head;
 }
 
 /*
@@ -266,7 +282,7 @@ void Scm_Init_curl(void)
       Scm_MakeForeignPointerClass(mod, "<curl-slist>",
 				  NULL,
 				  NULL,
-    				  SCM_FOREIGN_POINTER_KEEP_IDENTITY|SCM_FOREIGN_POINTER_MAP_NULL);
+				  SCM_FOREIGN_POINTER_KEEP_IDENTITY|SCM_FOREIGN_POINTER_MAP_NULL);
 
     /* Register stub-generated procedures */
     Scm_Init_curllib(mod);

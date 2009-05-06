@@ -13,7 +13,6 @@
   (export 
    <curl-base>
    <curl-slist>
-  ; <curl-version-info>
    test-curl ;; dummy
    curl-easy-init
    curl-easy-cleanup
@@ -25,15 +24,15 @@
    curl-version-info
    curl-easy-getinfo
    curl-easy-strerror
-   curl-slist-init
-   curl-slist-append
-   curl-slist-append
+
    curl-bind-input-port
    curl-bind-output-port
 
    curl-easy-escape
    curl-easy-unescape
    curl-free
+   list->curl-slist
+   curl-slist->list
 
 CURLE_OK
 CURLE_UNSUPPORTED_PROTOCOL
@@ -331,7 +330,7 @@ CURLVERSION_NOW
 (define-method initialize ((curl <cURL>) initargs)
   (next-method)
   (slot-set! curl 'handler (curl-easy-init)))
- 
+
 (define (options args)
   (let-args args
       ((progress-bar "#|progress-bar" #f)
@@ -476,6 +475,45 @@ CURLVERSION_NOW
        (speed-time "y|speed-time=s" )
        (time-cond "z|time-cond=s"))
     ()))
+
+
+
+;; Common
+
+(define (http-common hnd)
+  (curl-easy-setopt hnd CURLOPT_USERAGENT 
+		    (string-append "Gauche " (gauche-version) "/libcurl " (curl-version)))
+  (curl-easy-setopt hnd CURLOPT_AUTOREFERER 1)
+  (curl-easy-setopt hnd CURLOPT_ENCODING )
+  (curl-easy-setopt hnd CURLOPT_HTTP_VERSION CURL_HTTP_VERSION_NONE)
+  (curl-easy-setopt hnd CURLOPT_HTTPHEADER (list->curl-slist head-ls)))
+
+;; GET
+(define (http-get url str . head-ls)
+  (let1 hnd (curl-easy-init)
+    (curl-easy-setopt hnd CURLOPT_URL url)
+    (curl-easy-setopt hnd CURLOPT_HTTPGET 1)
+    (curl-easy-perform hnd)
+    (values 
+     (curl-easy-getinfo hnd CURLINFO_RESPONSE_CODE))))
+
+
+;; POST
+(define (http-post url str . head-ls)
+  (let1 hnd (curl-easy-init)
+    (curl-easy-setopt hnd CURLOPT_URL url)
+    (curl-easy-setopt hnd CURLOPT_CUSTOMREQUEST "POST")
+    (curl-easy-setopt hnd CURLOPT_POSTFIELDS str)
+    (curl-easy-setopt hnd CURLOPT_POSTFIELDSIZE (string-size str))
+    (curl-easy-setopt hnd CURLOPT_HTTPHEADER s2)
+    (curl-easy-perform hnd)
+    (values 
+     (curl-easy-getinfo hnd CURLINFO_RESPONSE_CODE))))
+
+;; PUT
+
+;; DELETE
+
 
 ;; Epilogue
 (provide "curl")
