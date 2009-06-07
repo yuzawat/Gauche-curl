@@ -1,4 +1,4 @@
-;;;
+;;; -*- coding: utf-8; mode: scheme -*-
 ;;; Test curl
 ;;;
 
@@ -9,11 +9,9 @@
 (use curl)
 #;(test-module 'curl)
 
-;; The following is a dummy test code.
-;; Replace it for your tests.
-(test* "test-curl" "curl is working"
-       (test-curl))
-
+; global constants init
+(test* "curl-global-init" 0
+       (curl-global-init CURL_GLOBAL_ALL))
 
 ; curl version
 (test-section "curl version check")
@@ -56,39 +54,63 @@
 (define hnd (curl-easy-init))
 (test* "curl-easy-setopt (set URL)" 0
        (curl-easy-setopt hnd CURLOPT_URL "http://www.google.com/"))
+#;(test* "curl-easy-setopt (set URL)" 0
+       (curl-easy-setopt hnd CURLOPT_URL "http://localhost:8080/hello"))
 
 ;;  common
 (test* "curl-easy-setopt (set timeout)" 0
         (curl-easy-setopt hnd CURLOPT_TIMEOUT 10))
 (test* "curl-easy-setopt (set proxy off)" 0
-        (curl-easy-setopt hnd CURLOPT_PROXY #f))
+        (curl-easy-setopt hnd CURLOPT_PROXY ""))
 (test* "curl-easy-setopt (set verbose)" 0
-        (curl-easy-setopt hnd CURLOPT_VERBOSE 1))
+        (curl-easy-setopt hnd CURLOPT_VERBOSE 0))
+(test* "curl-easy-setopt (set follow location)" 0
+       (curl-easy-setopt hnd CURLOPT_FOLLOWLOCATION 1))
+(test* "curl-easy-setopt (set encoding)" 0
+       (curl-easy-setopt hnd CURLOPT_ENCODING ""))
+(test* "curl-easy-setopt (set auto referer)" 0
+       (curl-easy-setopt hnd CURLOPT_AUTOREFERER 1))
+(test* "curl-easy-setopt (set user agent)" 0
+       (curl-easy-setopt hnd CURLOPT_USERAGENT 
+			 (string-append "Gauche " (gauche-version) " " (curl-version))))
+(test* "curl-easy-setopt (set http version)" 0
+       (curl-easy-setopt hnd CURLOPT_HTTP_VERSION CURL_HTTP_VERSION_NONE))
+(test* "curl-easy-setopt (set body include no header)" 0
+       (curl-easy-setopt hnd CURLOPT_HEADER 0))
 
-#;(curl-bind-input-port c)
-(curl-bind-output-port hnd)
+;; #;(curl-bind-input-port c)
+#;(curl-bind-output-port hnd)
+(curl-open-output-port hnd)
+;(curl-open-header-port hnd "hoge-head.txt")
 
-(test* "curl-easy-perform" 0
-       (with-output-to-string 
+(define body (with-output-to-string
 	 (lambda () (curl-easy-perform hnd))))
 
 ;; response
-(test* "curl-easy-getinfo" #t
+(test* "curl-easy-getinfo (response code)" #t
        (curl-easy-getinfo hnd CURLINFO_RESPONSE_CODE))
-(test* "curl-easy-getinfo" #t
+(test* "curl-easy-getinfo (effective url)" #t
        (curl-easy-getinfo hnd CURLINFO_EFFECTIVE_URL))
-(test* "curl-easy-getinfo" #t
+(test* "curl-easy-getinfo (content type)" #t
        (curl-easy-getinfo hnd CURLINFO_CONTENT_TYPE))
-#;(test* "curl-easy-getinfo" #t
+#;(test* "curl-easy-getinfo (cookie list)" #t
        (curl-easy-getinfo hnd CURLINFO_COOKIELIST))
 (test* "curl-easy-strerror" #t
         (curl-easy-strerror 0))
 (curl-easy-cleanup hnd)
 
 
+(test* "curl-global-cleanup" #t
+       (eq? (undefined) (curl-global-cleanup)))
+
+(test-end)
+(display body)
+(exit)
+
 ;; HTTP POST
 (test-section "HTTP POST")
-(define post-string "email=example@example.tld&password=example&type=regular&body=This%20is%20a%20test3&private=1&format=markdown")
+#;(define post-string "email=example@example.tld&password=example&type=regular&body=This%20is%20a%20test3&private=1&format=markdown")
+(define post-string "email=yuzawata@gmail.com&password=B'dikkat&type=regular&body=This%20is%20a%20test3&private=1&format=markdown")
 (define hnd (curl-easy-init))
 (curl-easy-setopt hnd CURLOPT_URL "http://www.tumblr.com/api/write/")
 (test* "curl-easy-setopt (set custom request)" 0
@@ -102,27 +124,34 @@
 (test* "curl-easy-setopt " 0
        (curl-easy-setopt hnd CURLOPT_INFILESIZE_LARGE (- CURLOPTTYPE_OFF_T 1)))
 (curl-easy-setopt hnd CURLOPT_TIMEOUT 10)
-(curl-easy-setopt hnd CURLOPT_PROXY #f)
+(curl-easy-setopt hnd CURLOPT_PROXY "")
 (curl-easy-setopt hnd CURLOPT_VERBOSE 1)
+(curl-easy-setopt hnd CURLOPT_FOLLOWLOCATION 1)
+(curl-easy-setopt hnd CURLOPT_ENCODING "")
+(curl-easy-setopt hnd CURLOPT_AUTOREFERER 1)
+(curl-easy-setopt hnd CURLOPT_USERAGENT 
+		  (string-append "Gauche " (gauche-version) " " (curl-version)))
+(curl-easy-setopt hnd CURLOPT_HTTP_VERSION CURL_HTTP_VERSION_NONE)
 
 (test* "curl-easy-setopt (set header)" 0
        (curl-easy-setopt hnd CURLOPT_HTTPHEADER 
 			 (list->curl-slist (list "X-hoge0: hoge" "X-hoge1: hoge" "X-hoge2: hoge"))))
 
 (curl-bind-output-port hnd)
+(curl-bind-header-port hnd)
 
 (test* "post" ""
        (with-output-to-string 
 	   (lambda () (curl-easy-perform hnd))))
 
 ;; response
-(test* "curl-easy-getinfo" #t
+(test* "curl-easy-getinfo (response code)" #t
        (curl-easy-getinfo hnd CURLINFO_RESPONSE_CODE))
-(test* "curl-easy-getinfo" #t
+(test* "curl-easy-getinfo (effective url)" #t
        (curl-easy-getinfo hnd CURLINFO_EFFECTIVE_URL))
-(test* "curl-easy-getinfo" #t
+(test* "curl-easy-getinfo (content type)" #t
        (curl-easy-getinfo hnd CURLINFO_CONTENT_TYPE))
-#;(test* "curl-easy-getinfo" #t
+#;(test* "curl-easy-getinfo (cookie list)" #t
        (curl-easy-getinfo hnd CURLINFO_COOKIELIST))
 (test* "curl-easy-strerror" #t
         (curl-easy-strerror 0))
@@ -133,5 +162,8 @@
 ;; HTTP DELETE
 (test-section "HTTP DELETE")
 
+
+(test* "curl-global-cleanup" #t
+       (eq? (undefined) (curl-global-cleanup)))
 ;; epilogue
 (test-end)

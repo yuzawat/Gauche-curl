@@ -1,3 +1,4 @@
+/*-*- coding: utf-8 -*-*/
 /*
  * curl.c
  */
@@ -9,13 +10,14 @@
  * your C function definitions.
  */
 
-ScmObj test_curl(void)
-{
-    return SCM_MAKE_STR("curl is working");
-}
-
 /* <curl-base> */
 ScmClass *ScmCurlClass;
+
+/* <curl-multi-base> */
+ScmClass *ScmCurlMClass;
+
+/* <curl-share-base> */
+ScmClass *ScmCurlSHClass;
 
 /* <curl-slist> */
 ScmClass *ScmCurl_SListClass;
@@ -27,99 +29,174 @@ static void curl_cleanup(ScmObj obj)
   curl_easy_cleanup(hnd);
 }
 
-extern ScmObj *OUTPORT = NULL;
-
-/* write to port */
-size_t write_to_port(void *buffer, size_t sz, size_t nmemb, void *stream)
+/* <curl-multi-base> cleanup */
+static void curlm_cleanup(ScmObj obj)
 {
-  ScmObj oport;
-  if (OUTPORT) {
-    oport = OUTPORT;
-  } else {
-    oport = SCM_CUROUT;
-  }
-  size_t rc;
-  if (SCM_OPORTP(oport)) {
-      Scm_Write(SCM_MAKE_STR_COPYING(buffer),
-		SCM_OBJ(oport),
-		SCM_WRITE_DISPLAY); 
-      rc = sz * nmemb;
-  } else {
-    rc =  0;
-  }
-  return rc;
+  CURLM *mhnd = SCMCURLM_UNBOX(obj);
+  curl_multi_cleanup(mhnd);
 }
 
-/* static size_t my_fwrite(void *buffer, size_t sz, size_t nmemb, void *stream) */
-/* { */
-/*   size_t rc; */
-/*   struct OutStruct *out=(struct OutStruct *)stream; */
-/*   struct Configurable *config = out->config; */
+/* <curl-share-base> cleanup */
+static void curlsh_cleanup(ScmObj obj)
+{
+  CURLSH *shhnd = SCMCURLSH_UNBOX(obj);
+  curl_share_cleanup(shhnd);
+}
 
-/*   if(!out->stream) { */
-/*     /\* open file for writing *\/ */
-/*     out->stream=fopen(out->filename, "wb"); */
-/*     if(!out->stream) { */
-/*       warnf(config, "Failed to create the file %s\n", out->filename); */
-/*       /\* */
-/*        * Once that libcurl has called back my_fwrite() the returned value */
-/*        * is checked against the amount that was intended to be written, if */
-/*        * it does not match then it fails with CURLE_WRITE_ERROR. So at this */
-/*        * point returning a value different from sz*nmemb indicates failure. */
-/*        *\/ */
-/*       rc = (0 == (sz * nmemb)) ? 1 : 0; */
-/*       return rc; /\* failure *\/ */
-/*     } */
-/*   } */
 
-/*   rc = fwrite(buffer, sz, nmemb, out->stream); */
+/* write to file, read from file */
+ScmObj curl_open_file(CURL *hnd, int type, const char* fn)
+{
+  ScmObj *oport;
+  FILE* fp;
+  int fd, rc;
+  mode_t old_mode = umask(S_IRWXO);
+   switch (type)
+    {
+    case CURLOPT_WRITEDATA:
+      fd = open(fn, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP);
+      fp = fdopen(fd, "w");
+      rc = curl_easy_setopt(hnd, CURLOPT_WRITEDATA, fp);
+      if (rc != 0) {
+	Scm_Error("failed to open file %s\n",fn);
+      }
+      break;
+    case CURLOPT_WRITEHEADER:
+      fd = open(fn, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP);
+      fp = fdopen(fd, "w");
+      rc = curl_easy_setopt(hnd, CURLOPT_WRITEHEADER, fp);
+      if (rc != 0) {
+	Scm_Error("failed to open file %s\n",fn);
+      }
+      break;
+    case CURLOPT_STDERR:
+      fd = open(fn, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP);
+      fp = fdopen(fd, "w");
+      rc = curl_easy_setopt(hnd, CURLOPT_STDERR, fp);
+      if (rc != 0) {
+	Scm_Error("failed to open file %s\n",fn);
+      }
+      break;
+    case CURLOPT_READDATA:
+      fd = open(fn, O_RDONLY);
+      fp = fdopen(fd, "r");
+      rc = curl_easy_setopt(hnd, CURLOPT_READDATA, fp);
+      if (rc != 0) {
+	Scm_Error("failed to open file %s\n",fn);
+      }
+      break;
+    default:
+      Scm_Error("Invalid option type\n");
+      return NULL;
+      break;
+    }
+   umask(old_mode);
+   return SCM_UNDEFINED;
+}
 
-/*   if((sz * nmemb) == rc) { */
-/*     /\* we added this amount of data to the output *\/ */
-/*     out->bytes += (sz * nmemb); */
-/*   } */
 
-/*   if(config->nobuffer) */
-/*     /\* disable output buffering *\/ */
-/*     fflush(out->stream); */
+/* write to port, read from port */
+ScmObj curl_open_port(CURL* hnd, int type, ScmObj *scm_port)
+{
+  ScmObj *port = scm_port;
+  int rc;
+  switch (type)
+    {
+    case CURLOPT_WRITEDATA:
+      rc = curl_easy_setopt(hnd, CURLOPT_WRITEDATA, port);
+      if (rc != 0) {
+	Scm_Error("failed to setopt\n");
+      }
+      rc = curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, &write_to_port);
+      if (rc != 0) {
+	Scm_Error("failed to setopt\n");
+      }
+      break;
+    case CURLOPT_WRITEHEADER:
+      rc = curl_easy_setopt(hnd, CURLOPT_WRITEHEADER, port);
+      if (rc != 0) {
+	Scm_Error("failed to setopt\n");
+      }
+      rc = curl_easy_setopt(hnd, CURLOPT_HEADERFUNCTION, &write_to_port);
+      if (rc != 0) {
+	Scm_Error("failed to setopt\n");
+      }
+      break;
+    case CURLOPT_READDATA:
+      rc = curl_easy_setopt(hnd, CURLOPT_READDATA, port);
+      if (rc != 0) {
+	Scm_Error("failed to setopt\n");
+      }
+      rc = curl_easy_setopt(hnd, CURLOPT_READFUNCTION, &read_from_port);
+      if (rc != 0) {
+	Scm_Error("failed to setopt\n");
+      }
+      break;
+    defalut:
+      Scm_Error("Invalid option type\n");
+      return NULL;
+      break;
+    }
+  return SCM_OBJ(port);
+}
 
-/*   return rc; */
-/* }}} */
+/* write to port function */
+size_t write_to_port(void *buffer, size_t sz, size_t nmemb, void *scm_port)
+{
+  ScmObj *oport;
+  size_t isize;
+  int i, j;
+  int times = 0;
+  char wbuff[sz];
+  char *data = (char*)buffer;
+  oport = scm_port;
+  isize = sz * nmemb;
+  memset(wbuff, 0, sz);
 
-extern ScmObj INPORT = NULL;
+  for (i = 0; i < isize; i += sz) {
+    for(j = 0; j <= sz; j++) {
+      if (j == sz) {
+	Scm_Putz(wbuff, sz, SCM_PORT(oport));
+	times++;
+	break;
+      } else {
+	wbuff[j] = *data++;
+      }
+    }
+  }
+
+  if (SCM_PORT_TYPE(SCM_PORT(oport)) == SCM_PORT_FILE)
+      Scm_Flush(SCM_PORT(oport));
+
+  if (times == nmemb) {
+    return isize;
+  } else {
+    return 0;
+  }
+}
+
 
 /* read from port */
-size_t read_from_port(void *buffer, size_t sz, size_t nmemb, void *userp)
+size_t read_from_port(void *buffer, size_t sz, size_t nmemb, void *scm_port)
 {
-  ScmObj iport;
-  if (INPORT) {
-    iport = INPORT;
-  } else {
-    iport = SCM_CURIN;
+  ScmObj *iport;
+  size_t isize;
+  int wc, c;
+  iport = scm_port;
+  wc = 0;
+  isize = sz * nmemb;
+  while (wc < isize) {
+    c = Scm_Getz(buffer, sz, SCM_PORT(iport));
+    wc = wc + c;
   }
-  size_t rc;
-  ScmString *curl_input;
-  curl_input = Scm_Read(SCM_OBJ(iport));
-  if (SCM_STRINGP(SCM_STRING(curl_input))) {
-    buffer = strdup(Scm_GetStringConst(SCM_STRING(curl_input)));
-    rc = sz * nmemb;
-  } else {
-    rc = 0;
+
+  if ((size_t)wc == isize) {
+    return isize;
+  } else { 
+    return 0;
   }
-  return rc;
 }
 
-/* static size_t my_fread(void *buffer, size_t sz, size_t nmemb, void *userp) */
-/* { */
-/*   ssize_t rc; */
-/*   struct InStruct *in=(struct InStruct *)userp; */
-
-/*   rc = read(in->fd, buffer, sz*nmemb); */
-/*   if(rc < 0) */
-/*     /\* since size_t is unsigned we can't return negative values fine *\/ */
-/*     return 0; */
-/*   return (size_t)rc; */
-/* } */
 
 /* curl_version_info() return version & features as alist */
 ScmObj curl_version_info_list(void)
@@ -257,6 +334,76 @@ ScmObj curl_slist_to_list (struct curl_slist *slist)
   return head;
 }
 
+ScmObj _curl_easy_getinfo(CURL* hnd, int info)
+{
+  ScmObj resultobj;
+  int rc;
+  if (info == CURLINFO_EFFECTIVE_URL ||
+      info == CURLINFO_CONTENT_TYPE ||
+      info == CURLINFO_PRIVATE ||
+      info == CURLINFO_FTP_ENTRY_PATH ||
+      info == CURLINFO_REDIRECT_URL ) {
+    const char *result;
+    rc = curl_easy_getinfo(hnd, info, &result);
+    if ( rc == 0) {
+      resultobj = SCM_MAKE_STR_COPYING(result);
+    } else {
+      resultobj = SCM_FALSE;
+    }
+  } else if (info == CURLINFO_SSL_ENGINES ||
+	     info == CURLINFO_COOKIELIST ) {
+    struct curl_slist *result;
+    rc = curl_easy_getinfo(hnd, info, &result);
+    if ( rc == 0) {
+      resultobj = curl_slist_to_list(result);
+    } else {
+      resultobj = SCM_FALSE;
+    }
+  } else if (info == CURLINFO_RESPONSE_CODE ||
+	     info == CURLINFO_HEADER_SIZE ||
+	     info == CURLINFO_REQUEST_SIZE ||
+	     info == CURLINFO_SSL_VERIFYRESULT ||
+	     info == CURLINFO_FILETIME ||
+	     info == CURLINFO_REDIRECT_COUNT ||
+	     info == CURLINFO_HTTP_CONNECTCODE ||
+	     info == CURLINFO_HTTPAUTH_AVAIL ||
+	     info == CURLINFO_PROXYAUTH_AVAIL ||
+	     info == CURLINFO_OS_ERRNO ||
+	     info == CURLINFO_NUM_CONNECTS ||
+	     info == CURLINFO_LASTSOCKET ) {
+    long *result;
+    rc = curl_easy_getinfo(hnd, info, &result);
+    if ( rc == 0) {
+      resultobj = SCM_MAKE_INT(result);
+    } else {
+      resultobj = SCM_FALSE;
+    }
+  } else if (info == CURLINFO_TOTAL_TIME ||
+	     info == CURLINFO_NAMELOOKUP_TIME ||
+	     info == CURLINFO_CONNECT_TIME ||
+	     info == CURLINFO_PRETRANSFER_TIME ||
+	     info == CURLINFO_SIZE_UPLOAD ||
+	     info == CURLINFO_SIZE_DOWNLOAD ||
+	     info == CURLINFO_SPEED_DOWNLOAD ||
+	     info == CURLINFO_SPEED_UPLOAD ||
+	     info == CURLINFO_CONTENT_LENGTH_DOWNLOAD ||
+	     info == CURLINFO_CONTENT_LENGTH_UPLOAD ||
+	     info == CURLINFO_STARTTRANSFER_TIME ||
+	     info == CURLINFO_REDIRECT_TIME ||
+	     info == CURLINFO_APPCONNECT_TIME ) {
+    double *result;
+    rc = curl_easy_getinfo(hnd, info, &result);
+    if ( rc == 0) {
+      resultobj = SCM_MAKE_INT(result);
+    } else {
+      resultobj = SCM_FALSE;
+    }
+  } else {
+    resultobj = SCM_FALSE;
+  }
+  return resultobj;
+}
+
 /*
  * Module initialization function.
  */
@@ -277,6 +424,16 @@ void Scm_Init_curl(void)
 				  NULL,
 				  curl_cleanup,
     				  SCM_FOREIGN_POINTER_KEEP_IDENTITY|SCM_FOREIGN_POINTER_MAP_NULL);
+    ScmCurlMClass =
+      Scm_MakeForeignPointerClass(mod, "<curl-multi-base>",
+				  NULL,
+				  curlm_cleanup,
+    				  SCM_FOREIGN_POINTER_KEEP_IDENTITY|SCM_FOREIGN_POINTER_MAP_NULL);
+    ScmCurlSHClass =
+      Scm_MakeForeignPointerClass(mod, "<curl-share-base>",
+				  NULL,
+				  curlsh_cleanup,
+    				  SCM_FOREIGN_POINTER_KEEP_IDENTITY|SCM_FOREIGN_POINTER_MAP_NULL);
 
     ScmCurl_SListClass =
       Scm_MakeForeignPointerClass(mod, "<curl-slist>",
@@ -287,3 +444,5 @@ void Scm_Init_curl(void)
     /* Register stub-generated procedures */
     Scm_Init_curllib(mod);
 }
+
+

@@ -10,16 +10,61 @@
 (define-type <curl-base> "CURL*" "curl"
   "SCMCURL_P" "SCMCURL_UNBOX" "SCMCURL_BOX")
 
+;; cURL multi handler
+(define-type <curl-multi-base> "CURLM*" "curlm"
+  "SCMCURLM_P" "SCMCURLM_UNBOX" "SCMCURLM_BOX")
+
+;; cURL share handler
+(define-type <curl-share-base> "CURLSH*" "curlsh"
+  "SCMCURLSH_P" "SCMCURLSH_UNBOX" "SCMCURLSH_BOX")
+
 (define-type <curl-slist> "struct curl_slist*" "curl-slist"
   "SCMCURL_SLIST_P" "SCMCURL_SLIST_UNBOX" "SCMCURL_SLIST_BOX")
 
+;; initialize global constants 
+(define-cproc curl-global-init (flags::<int>)
+  (body <int>
+	"SCM_RESULT = curl_global_init(flags);"))
+
+;; cleanup global constants
+(define-cproc curl-global-cleanup ()
+  (call <void>
+	"curl_global_cleanup"))
+
+;; initialize easy handle
 (define-cproc curl-easy-init ()
   (body <curl-base>
 	"SCM_RESULT = curl_easy_init();"))
 
+;; cleanup easy handle
 (define-cproc curl-easy-cleanup (hnd::<curl-base>)
   (call <void>
 	"curl_easy_cleanup(hnd);"))
+
+;; initialize multi handle
+(define-cproc curl-multi-init ()
+  (body <curl-multi-base>
+	"SCM_RESULT = curl_multi_init();"))
+
+;; cleanup easy handle
+(define-cproc curl-multi-cleanup (mhnd::<curl-multi-base>)
+  (call <int>
+	"curl_multi_cleanup(mhnd);"))
+
+;; add a standard curl handle to the multi stack
+(define-cproc curl-multi-add-handle (mhnd::<curl-multi-base> hnd::<curl-base>)
+  (body <int>
+	"SCM_RESULT = curl_multi_add_handle(mhnd, hnd);"))
+
+;; removes a curl handle from the multi stack again
+(define-cproc curl-multi-remove-handle (mhnd::<curl-multi-base> hnd::<curl-base>)
+  (body <int>
+	"SCM_RESULT = curl_multi_remove_handle(mhnd, hnd);"))
+
+;; initialize share handle
+(define-cproc curl-share-init ()
+  (body <curl-share-base>
+	"SCM_RESULT = curl_share_init();"))
 
 ; set option
 ;; param expects long, finction pointer, object pointer and curl_off_t
@@ -49,14 +94,6 @@
 ;;   CURLOPT_POSTQUOTE
 ;;   CURLOPT_TELNETOPTIONS
 
-(define-cproc curl-bind-input-port (hnd::<curl-base>)
-  (body <int>
-	"SCM_RESULT = curl_easy_setopt(hnd, CURLOPT_READFUNCTION, read_from_port);"))
-
-(define-cproc curl-bind-output-port (hnd::<curl-base>)
-  (body <int>
-	"SCM_RESULT = curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, write_to_port);"))
-
 ; reset handle
 (define-cproc curl-easy-reset (hnd::<curl-base>)
   (call <void>
@@ -77,57 +114,7 @@
 
 (define-cproc curl-easy-getinfo (hnd::<curl-base> info::<int>)
   (body <top>
-	"int rc;"
-	"void* result;"
-	"if (info == CURLINFO_EFFECTIVE_URL ||"
-	"    info == CURLINFO_CONTENT_TYPE ||"
-	"    info == CURLINFO_PRIVATE ||"
-	"    info == CURLINFO_FTP_ENTRY_PATH ||"
-	"    info == CURLINFO_REDIRECT_URL ) {"
-	"  (char*)result;"
-        "  rc = curl_easy_getinfo(hnd, info, &result);"
-	"  if ( rc == 0) {"
-	"    SCM_RESULT = SCM_MAKE_STR_COPYING(result);"
-	"  } else {"
-	"    SCM_RESULT = SCM_FALSE;"
-	"  }"
-	"} else if (info == CURLINFO_SSL_ENGINES ||"
-	"           info == CURLINFO_COOKIELIST ) {"
-	"  (struct curl_slist*)result;"
-        "  rc = curl_easy_getinfo(hnd, info, &result);"
-	"  if ( rc == 0) {"
-	"    SCM_RESULT = curl_slist_to_list(result);"
-	"  } else {"
-	"    SCM_RESULT = SCM_FALSE;"
-	"  }"
-	"} else if (info == CURLINFO_RESPONSE_CODE ||"
-	"           info == CURLINFO_HEADER_SIZE ||"
-	"           info == CURLINFO_REQUEST_SIZE ||"
-	"           info == CURLINFO_SSL_VERIFYRESULT ||"
-	"           info == CURLINFO_FILETIME ||"
-	"           info == CURLINFO_REDIRECT_COUNT ||"
-	"           info == CURLINFO_HTTP_CONNECTCODE ||"
-	"           info == CURLINFO_HTTPAUTH_AVAIL ||"
-	"           info == CURLINFO_PROXYAUTH_AVAIL ||"
-	"           info == CURLINFO_OS_ERRNO ||"
-	"           info == CURLINFO_NUM_CONNECTS ||"
-	"           info == CURLINFO_LASTSOCKET ) {"
-	"  (long*)result;"
-        "  rc = curl_easy_getinfo(hnd, info, &result);"
-	"  if ( rc == 0) {"
-	"    SCM_RESULT = SCM_MAKE_INT(result);"
-	"  } else {"
-	"    SCM_RESULT = SCM_FALSE;"
-	"  }"
-	"} else {"
-	"  (double*)result;"
-        "  rc = curl_easy_getinfo(hnd, info, &result);"
-	"  if ( rc == 0) {"
-	"    SCM_RESULT = SCM_MAKE_INT(result);"
-	"  } else {"
-	"    SCM_RESULT = SCM_FALSE;"
-	"  }"
-	"}"))
+	"SCM_RESULT = _curl_easy_getinfo(hnd, info);"))
 
 (define-cproc curl-easy-strerror (errno::<int>)
   (call <const-cstring> 
@@ -155,19 +142,48 @@
   (call <const-cstring> 
 	"curl_easy_unescape(hnd, str, SCM_INT_VALUE(length), (int*)SCM_INT_VALUE(outlength));"))
 
+; reclaim memory that has been obtained through a libcurl call
 (define-cproc curl-free (str::<string>)
   (call <void> "curl_free(str);"))
 
-; cURL version
+; return value for environment name
+(define-cproc curl-getenv (str::<const-cstring>)
+  (body <const-cstring>
+	"SCM_RESULT = curl_getenv(str);"))
+
+; sends raw data over an "easy" connection
+(define-cproc curl-easy-send (hnd::<curl-base> str::<const-cstring> length::<int> size::<int>)
+  (body <int>
+	"SCM_RESULT = curl_easy_send(hnd, str, length, (int *)size);"))
+
+; receives raw data on an "easy" connection
+(define-cproc curl-easy-recv (hnd::<curl-base> str::<string> length::<int> size::<int>)
+  (body <int>
+	"SCM_RESULT = curl_easy_recv(hnd, str, length, (int *)size);"))
+
+; returns the libcurl version string
 (define-cproc curl-version ()
   (call <const-cstring> "curl_version"))
 
-; cURL version info
+; returns run-time libcurl version info
 (define-cproc curl-version-info ()
   (call <list> "curl_version_info_list"))
 
-(define-cproc test-curl ()
-  (return "test_curl"))
+
+; I/O handling
+(define-cproc curl-open-file (hnd::<curl-base> type::<int> fn::<const-cstring>)
+  (body <top>
+	"SCM_RESULT = curl_open_file(hnd, type, fn);"))
+
+(define-cproc curl-open-port (hnd::<curl-base> type::<int> port::<top>)
+  (body <top>
+	"SCM_RESULT = curl_open_port(hnd, type, SCM_PORT(port));"))
+
+;; global flags
+(define-enum CURL_GLOBAL_ALL)
+(define-enum CURL_GLOBAL_SSL)
+(define-enum CURL_GLOBAL_WIN32)
+(define-enum CURL_GLOBAL_NOTHING)
 
 ;; CURLoption
 (define-enum CURLOPT_FILE)
@@ -180,7 +196,9 @@
 (define-enum CURLOPT_INFILE)
 (define-enum CURLOPT_ERRORBUFFER)
 (define-enum CURLOPT_WRITEFUNCTION)
+(define-enum CURLOPT_WRITEDATA)
 (define-enum CURLOPT_READFUNCTION)
+(define-enum CURLOPT_READDATA)
 (define-enum CURLOPT_TIMEOUT)
 (define-enum CURLOPT_INFILESIZE)
 (define-enum CURLOPT_POSTFIELDS)
@@ -454,6 +472,39 @@
 (define-enum CURLINFO_SSL_DATA_OUT)
 (define-enum CURLINFO_END)
 
+;; CURLMcode
+(define-enum CURLM_CALL_MULTI_PERFORM)
+(define-enum CURLM_OK)
+(define-enum CURLM_BAD_HANDLE)
+(define-enum CURLM_BAD_EASY_HANDLE)
+(define-enum CURLM_OUT_OF_MEMORY)
+(define-enum CURLM_INTERNAL_ERROR)
+(define-enum CURLM_BAD_SOCKET)
+(define-enum CURLM_UNKNOWN_OPTION)
+(define-enum CURLM_LAST)
+
+;; CURLMSG
+(define-enum CURLMSG_NONE)
+(define-enum CURLMSG_DONE)
+(define-enum CURLMSG_LAST)
+
+;; CURLSHcode
+(define-enum CURLSHE_OK)
+(define-enum CURLSHE_BAD_OPTION)
+(define-enum CURLSHE_IN_USE)
+(define-enum CURLSHE_INVALID)
+(define-enum CURLSHE_NOMEM)
+(define-enum CURLSHE_LAST)
+
+;; CURLSHoption
+(define-enum CURLSHOPT_NONE)
+(define-enum CURLSHOPT_SHARE)
+(define-enum CURLSHOPT_UNSHARE)
+(define-enum CURLSHOPT_LOCKFUNC)
+(define-enum CURLSHOPT_UNLOCKFUNC)
+(define-enum CURLSHOPT_USERDATA)
+(define-enum CURLSHOPT_LAST)
+
 ;; bitmask
 (define-enum CURLPAUSE_RECV)
 (define-enum CURLPAUSE_RECV_CONT)
@@ -469,6 +520,11 @@
 (define-enum CURLVERSION_FOURTH)
 (define-enum CURLVERSION_LAST)
 (define-enum CURLVERSION_NOW)
+
+;; cURL http version
+(define-enum CURL_HTTP_VERSION_NONE)
+(define-enum CURL_HTTP_VERSION_1_0)
+(define-enum CURL_HTTP_VERSION_1_1)
 
 ;; Local variables:
 ;; mode: scheme
