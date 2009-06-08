@@ -60,6 +60,10 @@ ScmObj curl_open_file(CURL *hnd, int type, const char* fn)
       if (rc != 0) {
 	Scm_Error("failed to open file %s\n",fn);
       }
+      rc = curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, NULL);
+      if (rc != 0) {
+	Scm_Error("failed to setopt\n");
+      }
       break;
     case CURLOPT_WRITEHEADER:
       fd = open(fn, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP);
@@ -67,6 +71,10 @@ ScmObj curl_open_file(CURL *hnd, int type, const char* fn)
       rc = curl_easy_setopt(hnd, CURLOPT_WRITEHEADER, fp);
       if (rc != 0) {
 	Scm_Error("failed to open file %s\n",fn);
+      }
+      rc = curl_easy_setopt(hnd, CURLOPT_HEADERFUNCTION, NULL);
+      if (rc != 0) {
+	Scm_Error("failed to setopt\n");
       }
       break;
     case CURLOPT_STDERR:
@@ -83,6 +91,10 @@ ScmObj curl_open_file(CURL *hnd, int type, const char* fn)
       rc = curl_easy_setopt(hnd, CURLOPT_READDATA, fp);
       if (rc != 0) {
 	Scm_Error("failed to open file %s\n",fn);
+      }
+      rc = curl_easy_setopt(hnd, CURLOPT_READFUNCTION, NULL);
+      if (rc != 0) {
+	Scm_Error("failed to setopt\n");
       }
       break;
     default:
@@ -355,7 +367,7 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
     struct curl_slist *result;
     rc = curl_easy_getinfo(hnd, info, &result);
     if ( rc == 0) {
-      resultobj = curl_slist_to_list(result);
+      resultobj = result;
     } else {
       resultobj = SCM_FALSE;
     }
