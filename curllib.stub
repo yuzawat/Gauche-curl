@@ -75,7 +75,16 @@
   (body <int>
 	"CURLoption curlopt = opt;"
 	"if (SCM_NUMBERP(param)) {"
-	"  SCM_RESULT = curl_easy_setopt(hnd, curlopt, SCM_INT_VALUE(param));"
+	"  if (curlopt == CURLOPT_INFILESIZE_LARGE ||"
+	"      curlopt == CURLOPT_RESUME_FROM_LARGE ||"
+	"      curlopt == CURLOPT_MAXFILESIZE_LARGE ||"
+	"      curlopt == CURLOPT_POSTFIELDSIZE_LARGE ||"
+	"      curlopt == CURLOPT_MAX_SEND_SPEED_LARGE ||"
+	"      curlopt == CURLOPT_MAX_RECV_SPEED_LARGE) {"
+	"    SCM_RESULT = curl_easy_setopt(hnd, curlopt, (curl_off_t)SCM_INT_VALUE(param));"
+	"} else {"
+	"    SCM_RESULT = curl_easy_setopt(hnd, curlopt, (long)SCM_INT_VALUE(param));"
+	"}"
 	"} else if (SCM_STRINGP(param)) {"
 	"  SCM_RESULT = curl_easy_setopt(hnd, curlopt, SCM_STRING_CONST_CSTRING(param));"
 	"} else if (SCMCURL_SLIST_P(param)) {"
@@ -154,12 +163,12 @@
 ; sends raw data over an "easy" connection
 (define-cproc curl-easy-send (hnd::<curl-base> str::<const-cstring> length::<int> size::<int>)
   (body <int>
-	"SCM_RESULT = curl_easy_send(hnd, str, length, (int *)size);"))
+	"SCM_RESULT = curl_easy_send(hnd, str, (size_t)length, (size_t*)size);"))
 
 ; receives raw data on an "easy" connection
 (define-cproc curl-easy-recv (hnd::<curl-base> str::<string> length::<int> size::<int>)
   (body <int>
-	"SCM_RESULT = curl_easy_recv(hnd, str, length, (int *)size);"))
+	"SCM_RESULT = curl_easy_recv(hnd, str, (size_t)length, (size_t*)size);"))
 
 ; returns the libcurl version string
 (define-cproc curl-version ()
@@ -169,6 +178,22 @@
 (define-cproc curl-version-info ()
   (call <list> "curl_version_info_list"))
 
+(define-cproc curl-share-setopt (hnd::<curl-share-base> opt::<int> param::<top>)
+  (body <int>
+	"CURLSHoption curlshopt = opt;"
+	"if (SCM_NUMBERP(param)) {"
+	"  SCM_RESULT = curl_share_setopt(hnd, curlshopt, (long)SCM_INT_VALUE(param));"
+	"} else if (SCM_STRINGP(param)) {"
+	"  SCM_RESULT = curl_share_setopt(hnd, curlshopt, SCM_STRING_CONST_CSTRING(param));"
+	"} else if (SCM_FALSEP(param)) {"
+	"  SCM_RESULT = curl_share_setopt(hnd, curlshopt, NULL);"
+	"} else {"
+	"  SCM_RESULT = CURLE_GOT_NOTHING;"
+	"}"))
+
+(define-cproc curl-share-strerror (errno::<int>)
+  (call <const-cstring> 
+	"curl_share_strerror(errno);"))
 
 ; I/O handling
 (define-cproc curl-open-file (hnd::<curl-base> type::<int> fn::<const-cstring>)
@@ -177,7 +202,7 @@
 
 (define-cproc curl-open-port (hnd::<curl-base> type::<int> port::<top>)
   (body <top>
-	"SCM_RESULT = curl_open_port(hnd, type, SCM_PORT(port));"))
+	"SCM_RESULT = curl_open_port(hnd, type, (ScmObj*)port);"))
 
 ;; global flags
 (define-enum CURL_GLOBAL_ALL)
@@ -264,7 +289,6 @@
 (define-enum CURLOPT_SSL_CIPHER_LIST)
 (define-enum CURLOPT_HTTP_VERSION)
 (define-enum CURLOPT_FTP_USE_EPSV)
-(define-enum CURLOPT_SSLCERTTYPE)
 (define-enum CURLOPT_SSLKEY)
 (define-enum CURLOPT_SSLKEYTYPE)
 (define-enum CURLOPT_SSLENGINE)
@@ -276,76 +300,148 @@
 (define-enum CURLOPT_DEBUGDATA)
 (define-enum CURLOPT_COOKIESESSION)
 (define-enum CURLOPT_CAPATH)
-(define-enum CURLOPT_BUFFERSIZE)
-(define-enum CURLOPT_NOSIGNAL)
 (define-enum CURLOPT_SHARE)
 (define-enum CURLOPT_PROXYTYPE)
 (define-enum CURLOPT_ENCODING)
-(define-enum CURLOPT_PRIVATE)
 (define-enum CURLOPT_HTTP200ALIASES)
 (define-enum CURLOPT_UNRESTRICTED_AUTH)
 (define-enum CURLOPT_FTP_USE_EPRT)
-(define-enum CURLOPT_HTTPAUTH)
-(define-enum CURLOPT_SSL_CTX_FUNCTION)
-(define-enum CURLOPT_SSL_CTX_DATA)
-(define-enum CURLOPT_FTP_CREATE_MISSING_DIRS)
-(define-enum CURLOPT_PROXYAUTH)
 (define-enum CURLOPT_FTP_RESPONSE_TIMEOUT)
 (define-enum CURLOPT_IPRESOLVE)
 (define-enum CURLOPT_MAXFILESIZE)
-(define-enum CURLOPT_INFILESIZE_LARGE)
-(define-enum CURLOPT_RESUME_FROM_LARGE)
-(define-enum CURLOPT_MAXFILESIZE_LARGE)
-(define-enum CURLOPT_NETRC_FILE)
-(define-enum CURLOPT_USE_SSL)
-(define-enum CURLOPT_POSTFIELDSIZE_LARGE)
-(define-enum CURLOPT_TCP_NODELAY)
-(define-enum CURLOPT_FTPSSLAUTH)
-(define-enum CURLOPT_IOCTLFUNCTION)
-(define-enum CURLOPT_IOCTLDATA)
-(define-enum CURLOPT_FTP_ACCOUNT)
-(define-enum CURLOPT_COOKIELIST)
-(define-enum CURLOPT_IGNORE_CONTENT_LENGTH)
-(define-enum CURLOPT_FTP_SKIP_PASV_IP)
-(define-enum CURLOPT_FTP_FILEMETHOD)
-(define-enum CURLOPT_LOCALPORT)
-(define-enum CURLOPT_LOCALPORTRANGE)
-(define-enum CURLOPT_CONNECT_ONLY)
-(define-enum CURLOPT_CONV_FROM_NETWORK_FUNCTION)
-(define-enum CURLOPT_CONV_TO_NETWORK_FUNCTION)
-(define-enum CURLOPT_CONV_FROM_UTF8_FUNCTION)
-(define-enum CURLOPT_MAX_SEND_SPEED_LARGE)
-(define-enum CURLOPT_MAX_RECV_SPEED_LARGE)
-(define-enum CURLOPT_FTP_ALTERNATIVE_TO_USER)
-(define-enum CURLOPT_SOCKOPTFUNCTION)
-(define-enum CURLOPT_SOCKOPTDATA)
-(define-enum CURLOPT_SSL_SESSIONID_CACHE)
-(define-enum CURLOPT_SSH_AUTH_TYPES)
-(define-enum CURLOPT_SSH_PUBLIC_KEYFILE)
-(define-enum CURLOPT_SSH_PRIVATE_KEYFILE)
-(define-enum CURLOPT_FTP_SSL_CCC)
-(define-enum CURLOPT_TIMEOUT_MS)
-(define-enum CURLOPT_CONNECTTIMEOUT_MS)
-(define-enum CURLOPT_HTTP_TRANSFER_DECODING)
-(define-enum CURLOPT_HTTP_CONTENT_DECODING)
-(define-enum CURLOPT_NEW_FILE_PERMS)
-(define-enum CURLOPT_NEW_DIRECTORY_PERMS)
-(define-enum-conditionally CURLOPT_POSTREDIR)
-(define-enum CURLOPT_SSH_HOST_PUBLIC_KEY_MD5)
-(define-enum CURLOPT_OPENSOCKETFUNCTION)
-(define-enum CURLOPT_OPENSOCKETDATA)
-(define-enum CURLOPT_COPYPOSTFIELDS)
-(define-enum CURLOPT_PROXY_TRANSFER_MODE)
-(define-enum CURLOPT_SEEKFUNCTION)
-(define-enum CURLOPT_SEEKDATA)
-(define-enum-conditionally CURLOPT_CRLFILE)
-(define-enum-conditionally CURLOPT_ISSUERCERT)
-(define-enum-conditionally CURLOPT_ADDRESS_SCOPE)
-(define-enum-conditionally CURLOPT_CERTINFO)
-(define-enum-conditionally CURLOPT_USERNAME)
-(define-enum-conditionally CURLOPT_PASSWORD)
-(define-enum-conditionally CURLOPT_PROXYUSERNAME)
-(define-enum-conditionally CURLOPT_PROXYPASSWORD)
+;; (>= 7.9.3)
+(if "LIBCURL_VERSION_NUM >= 0x070903"
+    (define-enum CURLOPT_SSLCERTTYPE))
+;; (>= 7.10.0)
+(if "LIBCURL_VERSION_NUM >= 0x070a00"
+(begin
+    (define-enum CURLOPT_BUFFERSIZE)
+    (define-enum CURLOPT_NOSIGNAL)))
+;; (>= 7.10.3)
+(if "LIBCURL_VERSION_NUM >= 0x070a03"
+    (define-enum CURLOPT_PRIVATE))
+;; (>= 7.10.6)
+(if "LIBCURL_VERSION_NUM >= 0x070a06"
+    (define-enum CURLOPT_HTTPAUTH))
+;; (>= 7.10.7)
+(if "LIBCURL_VERSION_NUM >= 0x070a07"
+    (begin
+      (define-enum CURLOPT_FTP_CREATE_MISSING_DIRS)
+      (define-enum CURLOPT_PROXYAUTH)))
+;; (>= 7.10.9)
+(if "LIBCURL_VERSION_NUM >= 0x070a09"
+    (begin
+      (define-enum CURLOPT_NETRC_FILE)
+      (define-enum CURLOPT_INFILESIZE_LARGE)
+      (define-enum CURLOPT_RESUME_FROM_LARGE)
+      (define-enum CURLOPT_MAXFILESIZE_LARGE)
+      (define-enum CURLOPT_SSL_CTX_FUNCTION)
+      (define-enum CURLOPT_SSL_CTX_DATA)
+      (define-enum CURLOPT_USE_SSL)))
+;; (>= 7.11.1)
+(if "LIBCURL_VERSION_NUM >= 0x070b01"
+    (begin
+      (define-enum CURLOPT_POSTFIELDSIZE_LARGE)
+      (define-enum CURLOPT_TCP_NODELAY)))
+;; (>= 7.12.2)
+(if "LIBCURL_VERSION_NUM >= 0x070c02"
+    (define-enum CURLOPT_FTPSSLAUTH))
+;; (>= 7.12.3)
+(if "LIBCURL_VERSION_NUM >= 0x070c03"
+    (begin
+      (define-enum CURLOPT_IOCTLFUNCTION)
+      (define-enum CURLOPT_IOCTLDATA)))
+;; (>= 7.13.0)
+(if "LIBCURL_VERSION_NUM >= 0x070d00"
+    (begin
+      (define-enum CURLOPT_FTP_ACCOUNT)
+      (define-enum CURLOPT_COOKIELIST)
+      (define-enum CURLOPT_IGNORE_CONTENT_LENGTH)))
+;; (>= 7.14.2)
+(if "LIBCURL_VERSION_NUM >= 0x070e02"
+    (define-enum CURLOPT_FTP_SKIP_PASV_IP))
+;; (>= 7.15.1)
+(if "LIBCURL_VERSION_NUM >= 0x070f01"
+    (define-enum CURLOPT_FTP_FILEMETHOD))
+;; (>= 7.15.2)
+(if "LIBCURL_VERSION_NUM >= 0x070f02"
+    (begin
+      (define-enum CURLOPT_LOCALPORT)
+      (define-enum CURLOPT_LOCALPORTRANGE)
+      (define-enum CURLOPT_CONNECT_ONLY)
+      (define-enum CURLOPT_CONV_FROM_NETWORK_FUNCTION)
+      (define-enum CURLOPT_CONV_TO_NETWORK_FUNCTION)
+      (define-enum CURLOPT_CONV_FROM_UTF8_FUNCTION)))
+;; (>= 7.15.5)
+(if "LIBCURL_VERSION_NUM >= 0x070f05"
+    (begin
+      (define-enum CURLOPT_MAX_SEND_SPEED_LARGE)
+      (define-enum CURLOPT_MAX_RECV_SPEED_LARGE)
+      (define-enum CURLOPT_FTP_ALTERNATIVE_TO_USER)))
+;; (>= 7.15.6)
+(if "LIBCURL_VERSION_NUM >= 0x070f06"
+    (begin
+      (define-enum CURLOPT_SOCKOPTFUNCTION)
+      (define-enum CURLOPT_SOCKOPTDATA)))
+;; (>= 7.16.0)
+(if "LIBCURL_VERSION_NUM >= 0x071000"
+    (define-enum CURLOPT_SSL_SESSIONID_CACHE))
+;; (>= 7.16.1)
+(if "LIBCURL_VERSION_NUM >= 0x071001"
+    (begin
+      (define-enum CURLOPT_SSH_AUTH_TYPES)
+      (define-enum CURLOPT_SSH_PUBLIC_KEYFILE)
+      (define-enum CURLOPT_SSH_PRIVATE_KEYFILE)
+      (define-enum CURLOPT_FTP_SSL_CCC)))
+;; (>= 7.16.2)
+(if "LIBCURL_VERSION_NUM >= 0x071002"
+    (begin
+      (define-enum CURLOPT_TIMEOUT_MS)
+      (define-enum CURLOPT_CONNECTTIMEOUT_MS)
+      (define-enum CURLOPT_HTTP_TRANSFER_DECODING)
+      (define-enum CURLOPT_HTTP_CONTENT_DECODING)))
+;; (>= 7.16.4)
+(if "LIBCURL_VERSION_NUM >= 0x071004"
+    (begin
+      (define-enum CURLOPT_NEW_FILE_PERMS)
+      (define-enum CURLOPT_NEW_DIRECTORY_PERMS)))
+;; (>= 7.17.1)
+(if "LIBCURL_VERSION_NUM >= 0x071101"
+    (begin
+      (define-enum CURLOPT_POSTREDIR)
+      (define-enum CURLOPT_SSH_HOST_PUBLIC_KEY_MD5)
+      (define-enum CURLOPT_OPENSOCKETFUNCTION)
+      (define-enum CURLOPT_OPENSOCKETDATA)
+      (define-enum CURLOPT_COPYPOSTFIELDS)))
+;; (>= 7.18.0)
+(if "LIBCURL_VERSION_NUM >= 0x071200"
+    (begin
+      (define-enum CURLOPT_PROXY_TRANSFER_MODE)
+      (define-enum CURLOPT_SEEKFUNCTION)
+      (define-enum CURLOPT_SEEKDATA)))
+;; (>= 7.19.0)
+(if "LIBCURL_VERSION_NUM >= 0x071300"
+    (begin
+      (define-enum CURLOPT_CRLFILE)
+      (define-enum CURLOPT_ISSUERCERT)
+      (define-enum CURLOPT_ADDRESS_SCOPE)))
+;; (>= 7.19.1)
+(if "LIBCURL_VERSION_NUM >= 0x071301"
+    (begin
+      (define-enum CURLOPT_CERTINFO)
+      (define-enum CURLOPT_USERNAME)
+      (define-enum CURLOPT_PASSWORD)
+      (define-enum CURLOPT_PROXYUSERNAME)
+      (define-enum CURLOPT_PROXYPASSWORD)))
+;; (>= 7.19.4)
+(if "LIBCURL_VERSION_NUM >= 0x071304"
+    (begin
+      (define-enum CURLOPT_PROTOCOLS)
+      (define-enum CURLOPT_REDIR_PROTOCOLS)
+      (define-enum CURLOPT_NOPROXY)
+      (define-enum CURLOPT_SOCKS5_GSSAPI_SERVICE)
+      (define-enum CURLOPT_SOCKS5_GSSAPI_NEC)
+      (define-enum CURLOPT_TFTPBLKSIZE)))
 
 (define-enum CURLOPTTYPE_OFF_T)
 
@@ -404,7 +500,6 @@
 (define-enum CURLE_USE_SSL_FAILED)
 (define-enum CURLE_SEND_FAIL_REWIND)
 (define-enum CURLE_SSL_ENGINE_INITFAILED)
-(define-enum CURLE_LOGIN_DENIED)
 (define-enum CURLE_TFTP_NOTFOUND)
 (define-enum CURLE_TFTP_PERM)
 (define-enum CURLE_REMOTE_DISK_FULL)
@@ -418,9 +513,17 @@
 (define-enum CURLE_REMOTE_FILE_NOT_FOUND)
 (define-enum CURLE_SSH)
 (define-enum CURLE_SSL_SHUTDOWN_FAILED)
-(define-enum CURLE_AGAIN)
-(define-enum-conditionally CURLE_SSL_CRL_BADFILE)  ; (>= 7.19)
-(define-enum-conditionally CURLE_SSL_ISSUER_ERROR) ; (>= 7.19)
+;; (>= 7.13.1)
+(if "LIBCURL_VERSION_NUM >= 0x070d01"
+    (define-enum CURLE_LOGIN_DENIED))
+;; (>= 7.18.2)
+(if "LIBCURL_VERSION_NUM >= 0x071202"
+    (define-enum CURLE_AGAIN))
+;; (>= 7.19.0)
+(if "LIBCURL_VERSION_NUM >= 0x071300"
+    (begin
+      (define-enum CURLE_SSL_CRL_BADFILE)
+      (define-enum CURLE_SSL_ISSUER_ERROR)))
 (define-enum CURL_LAST)
 
 ;; CURLINFO
@@ -438,29 +541,59 @@
 (define-enum CURLINFO_HEADER_SIZE)
 (define-enum CURLINFO_REQUEST_SIZE)
 (define-enum CURLINFO_SSL_VERIFYRESULT)
-(define-enum CURLINFO_FILETIME)
+(define-enum CURLINFO_HTTP_CONNECTCODE)
 (define-enum CURLINFO_CONTENT_LENGTH_DOWNLOAD)
 (define-enum CURLINFO_CONTENT_LENGTH_UPLOAD)
 (define-enum CURLINFO_STARTTRANSFER_TIME)
 (define-enum CURLINFO_CONTENT_TYPE)
-(define-enum CURLINFO_REDIRECT_TIME)
-(define-enum CURLINFO_REDIRECT_COUNT)
-(define-enum CURLINFO_PRIVATE)
-(define-enum CURLINFO_HTTP_CONNECTCODE)
-(define-enum CURLINFO_HTTPAUTH_AVAIL)
-(define-enum CURLINFO_PROXYAUTH_AVAIL)
-(define-enum CURLINFO_OS_ERRNO)
-(define-enum CURLINFO_NUM_CONNECTS)
-(define-enum CURLINFO_SSL_ENGINES)
-(define-enum CURLINFO_COOKIELIST)
-(define-enum CURLINFO_LASTSOCKET)
-(define-enum CURLINFO_FTP_ENTRY_PATH)
-(define-enum CURLINFO_REDIRECT_URL)
-;; (>= 7.19)
-(define-enum-conditionally CURLINFO_PRIMARY_IP)
-(define-enum-conditionally CURLINFO_APPCONNECT_TIME)
-(define-enum-conditionally CURLINFO_CERTINFO)
-(define-enum-conditionally CURLINFO_LASTONE)
+;; (>= 7.5)
+(if "LIBCURL_VERSION_NUM >= 0x070500"
+    (define-enum CURLINFO_FILETIME))
+;; (>= 7.9.7)
+(if "LIBCURL_VERSION_NUM >= 0x070907"
+    (begin
+      (define-enum CURLINFO_REDIRECT_TIME)
+      (define-enum CURLINFO_REDIRECT_COUNT)))
+;; (>= 7.10.3)
+(if "LIBCURL_VERSION_NUM >= 0x070a03"
+    (define-enum CURLINFO_PRIVATE))
+;; (>= 7.10.8)
+(if "LIBCURL_VERSION_NUM >= 0x070a08"
+    (begin
+      (define-enum CURLINFO_HTTPAUTH_AVAIL)
+      (define-enum CURLINFO_PROXYAUTH_AVAIL)))
+;; (>= 7.13.2)
+(if "LIBCURL_VERSION_NUM >= 0x070d02"
+    (begin
+      (define-enum CURLINFO_OS_ERRNO)
+      (define-enum CURLINFO_NUM_CONNECTS)))
+;; (>= 7.13.3)
+(if "LIBCURL_VERSION_NUM >= 0x070d03"
+    (define-enum CURLINFO_SSL_ENGINES))
+;; (>= 7.14.1)
+(if "LIBCURL_VERSION_NUM >= 0x070e01"
+    (define-enum CURLINFO_COOKIELIST))
+;; (>= 7.15.2)
+(if "LIBCURL_VERSION_NUM >= 0x070f02"
+    (define-enum CURLINFO_LASTSOCKET))
+;; (>= 7.15.4)
+(if "LIBCURL_VERSION_NUM >= 0x070f04"
+    (define-enum CURLINFO_FTP_ENTRY_PATH))
+;; (>= 7.18.2)
+(if "LIBCURL_VERSION_NUM >= 0x071202"
+    (define-enum CURLINFO_REDIRECT_URL))
+;; (>= 7.19.0)
+(if "LIBCURL_VERSION_NUM >= 0x071300"
+    (begin
+      (define-enum CURLINFO_PRIMARY_IP)
+      (define-enum CURLINFO_APPCONNECT_TIME)))
+;; (>= 7.19.1)
+(if "LIBCURL_VERSION_NUM >= 0x071301"
+    (define-enum CURLINFO_CERTINFO))
+;; (>= 7.19.4)
+(if "LIBCURL_VERSION_NUM >= 0x071304"
+    (define-enum CURLINFO_CONDITION_UNMET))
+(define-enum CURLINFO_LASTONE)
 
 ;; curl_infotype
 (define-enum CURLINFO_TEXT)
@@ -472,6 +605,33 @@
 (define-enum CURLINFO_SSL_DATA_OUT)
 (define-enum CURLINFO_END)
 
+;; curl auth type
+(define-enum CURLAUTH_NONE)
+(define-enum CURLAUTH_BASIC)
+(define-enum CURLAUTH_DIGEST)
+(define-enum CURLAUTH_GSSNEGOTIATE)
+(define-enum CURLAUTH_NTLM)
+(define-enum CURLAUTH_DIGEST_IE)
+(define-enum CURLAUTH_ANY)
+(define-enum CURLAUTH_ANYSAFE)
+(define-enum CURLSSH_AUTH_ANY)
+(define-enum CURLSSH_AUTH_NONE)
+(define-enum CURLSSH_AUTH_PUBLICKEY)
+(define-enum CURLSSH_AUTH_PASSWORD)
+(define-enum CURLSSH_AUTH_HOST)
+(define-enum CURLSSH_AUTH_KEYBOARD)
+(define-enum CURLSSH_AUTH_DEFAULT)
+(define-enum CURLFTPAUTH_DEFAULT)
+(define-enum CURLFTPAUTH_SSL)
+(define-enum CURLFTPAUTH_TLS)
+(define-enum CURLFTPAUTH_LAST)
+
+;; symbols to use with CURLOPT_POSTREDIR
+(define-enum CURL_REDIR_GET_ALL)
+(define-enum CURL_REDIR_POST_301)
+(define-enum CURL_REDIR_POST_302)
+(define-enum CURL_REDIR_POST_ALL)
+
 ;; CURLMcode
 (define-enum CURLM_CALL_MULTI_PERFORM)
 (define-enum CURLM_OK)
@@ -479,8 +639,11 @@
 (define-enum CURLM_BAD_EASY_HANDLE)
 (define-enum CURLM_OUT_OF_MEMORY)
 (define-enum CURLM_INTERNAL_ERROR)
-(define-enum CURLM_BAD_SOCKET)
-(define-enum CURLM_UNKNOWN_OPTION)
+;; (>= 7.15.4)
+(if "LIBCURL_VERSION_NUM >= 0x070f04"
+    (begin
+      (define-enum CURLM_BAD_SOCKET)
+      (define-enum CURLM_UNKNOWN_OPTION)))
 (define-enum CURLM_LAST)
 
 ;; CURLMSG
@@ -493,7 +656,9 @@
 (define-enum CURLSHE_BAD_OPTION)
 (define-enum CURLSHE_IN_USE)
 (define-enum CURLSHE_INVALID)
-(define-enum CURLSHE_NOMEM)
+ ; (>= 7.12.0)
+(if "LIBCURL_VERSION_NUM >= 0x070c00"
+    (define-enum CURLSHE_NOMEM))
 (define-enum CURLSHE_LAST)
 
 ;; CURLSHoption
@@ -505,7 +670,16 @@
 (define-enum CURLSHOPT_USERDATA)
 (define-enum CURLSHOPT_LAST)
 
-;; bitmask
+;; the sharing stuff
+(define-enum CURL_LOCK_DATA_NONE)
+(define-enum CURL_LOCK_DATA_SHARE)
+(define-enum CURL_LOCK_DATA_COOKIE)
+(define-enum CURL_LOCK_DATA_DNS)
+(define-enum CURL_LOCK_DATA_SSL_SESSION)
+(define-enum CURL_LOCK_DATA_CONNECT)
+(define-enum CURL_LOCK_DATA_LAST)
+
+;; pause bitmask
 (define-enum CURLPAUSE_RECV)
 (define-enum CURLPAUSE_RECV_CONT)
 (define-enum CURLPAUSE_SEND)

@@ -220,7 +220,7 @@ ScmObj curl_version_info_list(void)
   SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("version"),
 					SCM_MAKE_STR_COPYING(data->version)));
   SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("version_number"),
-					SCM_MAKE_INT(data->version_num)));
+					Scm_Sprintf("%#08x", data->version_num)));
   SCM_APPEND1(info_list, last, Scm_Cons(SCM_MAKE_STR_COPYING("host"),
 					SCM_MAKE_STR_COPYING(data->host)));
   if (data->ssl_version) {

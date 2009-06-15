@@ -12,16 +12,23 @@
 ;;;         (header-str-port (curl-open-header-port c)))
 ;;;    (c)
 ;;;    (values  
-;;;     (curl-getinfo c 'RESPONSE_CODE)
+;;;     (curl-getinfo c CURLINFO_RESPONSE_CODE)
 ;;;     (get-output-string output-str-port)
 ;;;     (get-output-string header-str-port)))
 
 (define-module curl
+  (use gauche.mop.singleton)
   (use gauche.parseopt)
   (use gauche.parameter)
+  (use gauche.version)
+  (use rfc.822)
   (use rfc.uri)
+  (use srfi-1)
+  (use util.list)
   (export 
    <curl>
+   <curl-share>
+   <cuel-multi>
    <curl-base>
    <curl-multi-base>
    <curl-share-base>
@@ -52,15 +59,11 @@
    curl-multi-remove-handle
 
    curl-share-init
+   curl-share-setopt
+   curl-share-strerror
 
    curl-version
    curl-version-info
-
-   ;; cooked function
-   curl-open-output-file
-   curl-open-header-file
-   curl-open-output-port
-   curl-open-header-port
 
    curl-open-file
    curl-open-port
@@ -73,8 +76,19 @@
    curl-perform
    curl-getinfo
    curl-reset!
-   curl
+   curl-strerror
+   curl-open-output-file
+   curl-open-input-file
+   curl-open-header-file
+   curl-open-error-file
+   curl-open-output-port
+   curl-open-input-port
+   curl-open-header-port
+   curl-headers->alist
+   curl-set-http-header!
+
    http-get
+   http-head
    http-post
    http-put
    http-delete
@@ -161,6 +175,7 @@
    CURLOPT_URL
    CURLOPT_PORT
    CURLOPT_PROXY
+   CURLOPT_NOPROXY
    CURLOPT_USERPWD
    CURLOPT_PROXYUSERPWD
    CURLOPT_RANGE
@@ -356,6 +371,7 @@
    CURLINFO_PRIMARY_IP
    CURLINFO_APPCONNECT_TIME
    CURLINFO_CERTINFO
+   CURLINFO_CONDITION_UNMET
    CURLINFO_LASTONE
 
    CURL_HTTP_VERSION_NONE
@@ -407,6 +423,7 @@
 
 ;; global init
 (curl-global-init CURL_GLOBAL_ALL)
+(define curl-share-enable #t)
 
 ;; curl class
 (define-class <curl-meta> ()
@@ -425,6 +442,18 @@
 	   :init-value ""
 	   :accessor options-of)))
 
+(define-class <curl-share> (<curl-meta> <singleton-mixin>)
+  ())
+
+(define-class <curl-multi> (<curl-meta>)
+  ((handlers :allocation :instance
+	:init-keyword :handlers
+	:accessor handlers-of)
+   (options :allocation :instance
+	   :init-keyword :options
+	   :init-value ""
+	   :accessor options-of)))
+
 (define-method initialize ((curl <curl>) initargs)
   (next-method)
   (slot-set! curl 'handler (curl-easy-init))
@@ -433,14 +462,39 @@
   (when (slot-bound? curl 'options)
     (%easy-options curl (options-of curl))))
 
+(define-method initialize ((share <curl-share>) initargs)
+  (next-method)
+  (slot-set! share 'handler (curl-share-init))
+  (curl-share-setopt (handler-of share) CURLSHOPT_SHARE CURL_LOCK_DATA_COOKIE)
+  (curl-share-setopt (handler-of share) CURLSHOPT_SHARE CURL_LOCK_DATA_DNS))
+
 (define-method object-apply ((curl <curl>))
   (curl-perform curl))
+
+;; utils
+; libcurl version check
+(define (vc numstr)
+  (let1 version (cdr (assoc "version" (curl-version-info)))
+    (version>? version numstr)))
+; libcurl features check
+(define (fc str)
+  (let1 features (cdr (assoc "features" (curl-version-info)))
+    (if ((string->regexp str) features) #t #f)))
+; libcurl support protocols check
+(define (pc str)
+  (let1 protocols (cdr (assoc "protocols" (curl-version-info)))
+    (if ((string->regexp str) protocols) #t #f)))
+; URL scheme check
+(define (sc str url)
+  (let1 scheme (values-ref (uri-parse url) 0)
+    (if ((string->regexp str) scheme) #t #f)))
+
 
 ; parse options
 (define-method %easy-options ((curl <curl>) args)
   (let ((argls (if (string? args) (string-split args #/\s+/) args))
 	(hnd (handler-of curl))
-	(_ curl-easy-setopt))
+	(_ curl-setopt!))
     (let-args argls
 	((user-agent "A|user-agent=s" #f)
 	 (location "L|location" #f)
@@ -448,50 +502,175 @@
 	 (request "X|request=s" #f)
 	 (output "o|output=s" #f)
 	 (remote-name "O|remote-name" #f)
+	 (remote-time "R|remote-time=s" #f)
+	 (dump-header "D|dump-header=s" #f)
+	 (stderr "stderr=s" #f)
 	 (verbose "v|verbose" #f)
 	 (ignore-content-length "ignore-content-length" #f)
 	 (referer "e|referer=s" #f)
-	 (proxy "x|proxy=s" #f)
-	 (noproxy "noproxy=s" #f)
 	 (interface "interface=s" #f)
 	 (url "url=s" #f)
-	 (stderr "stderr=s" #f)
-	 (tcp-nodelay "tcp-nodelay" #f))
-      (if user-agent (_ hnd CURLOPT_USERAGENT user-agent) 
-	  (_ hnd CURLOPT_USERAGENT (string-append "Gauche " (gauche-version) " " (curl-version))))
-      (if location (_ hnd CURLOPT_FOLLOWLOCATION 1) (_ hnd CURLOPT_FOLLOWLOCATION 0)) 
-      (if location-trusted (_ hnd CURLOPT_UNRESTRICTED_AUTH 1) (_ hnd CURLOPT_UNRESTRICTED_AUTH 0))
-      (if request (_ hnd CURLOPT_CUSTOMREQUEST request) (_ hnd CURLOPT_CUSTOMREQUEST #f))
+	 (tcp-nodelay "tcp-nodelay" #f)
+	 (compressed "compressed"   #f)
+	 (user "u|user=s" #f)
+	 (basic "basic" #f)
+	 (digest "digest" #f)
+	 (negotiate "negotiate" #f)
+	 (ntlm "ntlm" #f)
+	 (anyauth "anyauth" #f)
+	 (fail "f|fail" #f)
+	 (include "i|include" #f)
+	 (head "I|head" #f)
+	 (get "G|get" #f)
+	 (header "H|header=s" #f)
+	 (proxy "x|proxy=s" #f)
+	 (noproxy "noproxy=s" #f)
+	 (proxy-user "U|proxy-user=s" #f)
+	 (proxy-anyauth "proxy-anyauth" #f)
+	 (proxy-basic "proxy-basic" #f)
+	 (proxy-digest "proxy-digest" #f)
+	 (proxy-negotiate "proxy-negotiate" #f)
+	 (proxy-ntlm "proxy-ntlm" #f)
+	 (post301 "post301" #f)
+	 (post302 "post302" #f)
+	 (upload-file "T|upload-file=s" #f)
+	 (junk-session-cookies "j|junk-session-cookies" #f)
+	 (cookie "b|cookie=s" #f)
+	 (cookie-jar "c|cookie-jar=s" #f)
+	 (data "d|data|data-ascii=s" #f)
+	 (data-binary "data-binary=s" #f)
+	 (data-urlencode "data-urlencode=s" #f)
+	 (max-filesize "max-filesize=i" #f)
+	 (max-redirs "max-redirs=i" #f)
+	 (connect-timeout "connect-timeout=i" #f)
+	 (max-time "m|max-time=i" #f))
+      ;; common
+      (when url (begin (_ curl CURLOPT_URL url) (slot-set! curl 'url url)))
+      (when curl-share-enable (_ curl CURLOPT_SHARE (handler-of (make <curl-share>))))
+      (if connect-timeout (_ curl CURLOPT_CONNECTTIMEOUT connect-timeout) (_ curl CURLOPT_CONNECTTIMEOUT 0))
+      (if max-time (_ curl CURLOPT_TIMEOUT max-time) (_ curl CURLOPT_TIMEOUT 0))
+      ;; debug
+      (if verbose (_ curl CURLOPT_VERBOSE 1) (_ curl CURLOPT_VERBOSE 0))
+      (when stderr (curl-open-file hnd CURLOPT_STDERR stderr))
+      ;; http 
+      (if user-agent (_ curl CURLOPT_USERAGENT user-agent) 
+	  (_ curl CURLOPT_USERAGENT (string-append "Gauche/" (gauche-version) " " (curl-version))))
+      (if location (_ curl CURLOPT_FOLLOWLOCATION 1) (_ curl CURLOPT_FOLLOWLOCATION 0)) 
+      (if location-trusted (_ curl CURLOPT_UNRESTRICTED_AUTH 1) (_ curl CURLOPT_UNRESTRICTED_AUTH 0))
+      (if max-redirs (_ curl CURLOPT_MAXREDIRS max-redirs) (_ curl CURLOPT_MAXREDIRS -1))
+      (if request (_ curl CURLOPT_CUSTOMREQUEST request) (_ curl CURLOPT_CUSTOMREQUEST #f))
+      (if referer
+ 	  (begin
+	    (if (#/\;auto$/ referer) (_ curl CURLOPT_AUTOREFERER 1) (_ curl CURLOPT_AUTOREFERER 0))
+	    (cond ((#/(^.+)\;auto$/ referer) => (lambda (m) (unless (= (string-length (m 1)) 0) (_ curl CURLOPT_REFERER (m 1)))))))
+	  (_ curl CURLOPT_REFERER #f))
+      (when compressed (begin (_ curl CURLOPT_ENCODING "") 
+			      (_ curl CURLOPT_HTTP_CONTENT_DECODING 1)))
+      (if fail (_ curl CURLOPT_FAILONERROR 1) (_ curl CURLOPT_FAILONERROR 0))
+      (when get (_ curl CURLOPT_HTTPGET 1))
+      (when header (_ curl CURLOPT_HTTPHEADER (list->curl_slist (string-split header #\,))))
+      (if head (_ curl CURLOPT_NOBODY 1) (_ curl CURLOPT_NOBODY 0))
+      (when post301 (_ curl CURLOPT_POSTREDIR CURL_REDIR_POST_301))
+      (when post302 (_ curl CURLOPT_POSTREDIR CURL_REDIR_POST_302))
+      ;; output
       (if output (curl-open-output-file curl output) (curl-open-port hnd CURLOPT_WRITEDATA (current-output-port)))
       (when remote-name (curl-open-output-file curl
 					       (let1 fn (sys-basename (values-ref (uri-parse (url-of curl)) 4))
 						 (if (equal? fn "") "index.html" fn))))
-      (if verbose (_ hnd CURLOPT_VERBOSE 1) (_ hnd CURLOPT_VERBOSE 0))
-      (if ignore-content-length (_ hnd CURLOPT_IGNORE_CONTENT_LENGTH 1) (_ hnd CURLOPT_IGNORE_CONTENT_LENGTH 0))
-      (if referer (_ hnd CURLOPT_REFERER referer) (_ hnd CURLOPT_REFERER #f))
-      (if proxy (_ hnd CURLOPT_PROXY proxy) (_ hnd CURLOPT_PROXY #f))
-      (if noproxy (_ hnd CURLOPT_NOPROXY noproxy) (_ hnd CURLOPT_NOPROXY #f))
-      (if interface (_ hnd CURLOPT_INTERFACE interface) (_ hnd CURLOPT_INTERFACE #f))
-      (when url (_ hnd CURLOPT_URL url))
-      (when stderr (curl-open-file hnd CURLOPT_STDERR stderr))
-      (if tcp-nodelay (_ hnd CURLOPT_TCP_NODELAY 1) (_ hnd CURLOPT_TCP_NODELAY 0)))))
+      (if remote-time (_ curl CURLOPT_FILETIME 1) (_ curl CURLOPT_FILETIME 0))
+      (when dump-header (curl-open-header-file curl dump-header))
+      (when max-filesize (_ curl CURLOPT_MAXFILESIZE_LARGE max-filesize))
+      (if include (_ curl CURLOPT_HEADER 1) (_ curl CURLOPT_HEADER 0))
+      (if interface (_ curl CURLOPT_INTERFACE interface) (_ curl CURLOPT_INTERFACE #f))
+      (if tcp-nodelay (_ curl CURLOPT_TCP_NODELAY 1) (_ curl CURLOPT_TCP_NODELAY 0))
+      ;; auth
+      (if user (_ curl CURLOPT_USERPWD user) (_ curl CURLOPT_USERPWD #f))
+      (when basic (_ curl CURLOPT_HTTPAUTH CURLAUTH_BASIC))
+      (when digest (_ curl CURLOPT_HTTPAUTH CURLAUTH_DIGEST))
+      (when negotiate (_ curl CURLOPT_HTTPAUTH CURLAUTH_GSSNEGOTIATE))
+      (when ntlm (_ curl CURLOPT_HTTPAUTH CURLAUTH_NTLM))
+      (when anyauth (_ curl CURLOPT_HTTPAUTH CURLAUTH_ANY))
+      ;; proxy
+      (if proxy (_ curl CURLOPT_PROXY proxy) (_ curl CURLOPT_PROXY #f))
+      (when (vc "7.19.4")(if noproxy (_ curl CURLOPT_NOPROXY noproxy) (_ curl CURLOPT_NOPROXY #f)))
+      (if proxy-user (_ curl CURLOPT_PROXYUSERPWD proxy-user) (_ curl CURLOPT_PROXYUSERPWD #f))
+      (when proxy-anyauth (_ curl CURLOPT_PROXYAUTH CURLAUTH_ANY))
+      (when proxy-basic (_ curl CURLOPT_PROXYAUTH CURLAUTH_BASIC))
+      (when proxy-digest (_ curl CURLOPT_PROXYAUTH CURLAUTH_DIGEST))
+      (when proxy-negotiate (_ curl CURLOPT_PROXYAUTH CURLAUTH_GSSNEGOTIATE))
+      (when proxy-ntlm (_ curl CURLOPT_PROXYAUTH CURLAUTH_NTLM))
+      ;; data upload
+      (when upload-file 
+	(begin
+	  (_ curl CURLOPT_UPLOAD 1)
+	  (curl-open-input-file curl upload-file)
+	  (_ curl CURLOPT_INFILESIZE_LARGE (slot-ref (sys-stat upload-file) 'size))
+	  (when (#/^http/ (url-of curl))
+	    (let1 purl (string-append  
+			(url-of curl) (if (#/\/$/ (url-of curl)) "" "/") (uri-encode-string upload-file))
+	      (_ curl CURLOPT_URL purl)
+	      (slot-set! curl 'url url)))))
+      (if data
+	(begin
+	  (_ curl CURLOPT_POST 1)
+	  (if (#/^@/ data) (curl-open-input-file curl data) (_ curl CURLOPT_POSTFIELDS data))
+	  (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1))
+	(_ curl CURLOPT_POST 0))
+      (if data-binary
+	(begin
+	  (_ curl CURLOPT_POST 1)
+	  (if (#/^@/ data) (curl-open-input-file curl data) (_ curl CURLOPT_POSTFIELDS data))
+	  (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1))
+	(_ curl CURLOPT_POST 0))
+      (if data-urlencode
+	  (begin
+	    (_ curl CURLOPT_POST 1)
+	    (cond ((#/^(.+)@(.+)$/ data-urlencode) 
+		   => (lambda (m) 
+			(_ curl CURLOPT_POSTFIELDS
+			   (string-append 
+			    (m 1) "=" 
+			    (uri-encode-string (port->string (open-input-file (m 2))))))))
+		  ((#/^(.+)=(.+)$/ data-urlencode) 
+		   => (lambda (m) 
+			(_ curl CURLOPT_POSTFIELDS
+			   (string-append 
+			    (m 1) "="
+			    (uri-encode-string (m 2))))))
+		  ((#/^@(.+)$/ data-urlencode) 
+		   => (lambda (m) 
+			(_ curl CURLOPT_POSTFIELDS
+			   (uri-encode-string (port->string (open-input-file (m 1)))))))
+		  ((#/^=(.+)$/ data-urlencode) 
+		   => (lambda (m) 
+			(_ curl CURLOPT_POSTFIELDS
+			   (uri-encode-string (m 1)))))
+		  (else  
+		   (_ curl CURLOPT_POSTFIELDS (uri-encode-string data-urlencode))))
+	    (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1))
+	(_ curl CURLOPT_POST 0))
+      (if ignore-content-length (_ curl CURLOPT_IGNORE_CONTENT_LENGTH 1) (_ curl CURLOPT_IGNORE_CONTENT_LENGTH 0))
+      ;; cookie
+      (if junk-session-cookies (_ curl CURLOPT_COOKIESESSION 0) (_ curl CURLOPT_COOKIESESSION 1))
+      (if cookie 
+	  (if (#/=/ cookie) (_ curl CURLOPT_COOKIE cookie) 
+	      (_ curl CURLOPT_COOKIEFILE cookie))
+	  (begin
+	    (_ curl CURLOPT_COOKIE #f)
+	    (_ curl CURLOPT_COOKIEFILE #f)))
+      (if cookie-jar (_ curl CURLOPT_COOKIEJAR cookie-jar) (_ curl CURLOPT_COOKIEJAR #f)))))
+
+;(_ curl CURLOPT_HTTPAUTH CURLAUTH_ANYSAFE)
+;(_ curl CURLOPT_HTTPAUTH CURLAUTH_DIGEST_IE)
 
 ;;        (progress-bar "#|progress-bar" #f)
-;;        (anyauth "anyauth" #f)
-;;        (basic "basic" #f)
 ;;        (buffer "buffer" #f)
 ;;        (cacert "cacert=s")
 ;;        (capath "capath=s")
 ;;        (cert-type "cert-type=s") 
 ;;        (ciphers "ciphers=s")
-;;        (compressed "compressed"   #f)
-;;        (connect-timeout "connect-timeout=s" )
 ;;        (create-dirs "create-dirs" #f)
 ;;        (crlf "crlf" #f)
-;;        (data-ascii "data-ascii" #f)
-;;        (data-binary "data-binary" #f)
-;;        (data-urlencode "data-urlencode=s" )
-;;        (digest "digest" #f)
 ;;        (disable-eprt "disable-eprt" #f)
 ;;        (disable-epsv "disable-epsv" #f)
 ;;        (egd-file "egd-file=s" )
@@ -513,30 +692,17 @@
 ;;        (ftp-ssl-reqd "ftp-ssl-reqd" #f)
 ;;        (hostpubmd5 "hostpubmd5=s" )
 ;;        (keepalive "keepalive" #f)
-;;        (keepalive-time "keepalive-time=s" )
 ;;        (key "key=s" )
 ;;        (key-type "key-type=s" )
 ;;        (krb "krb=s" )
 ;;        (limit-rate "limit-rate=s" )
 ;;        (local-port "local-port=s" )
-;;        (max-filesize "max-filesize=s" )
-;;        (max-redirs "max-redirs=s" )
-;;        (negotiate "negotiate" #f)
 ;;        (netrc-optional "netrc-optional" #f)
 ;;        (no-eprt "no-eprt" #f)
 ;;        (no-epsv "no-epsv" #f)
 ;;        (no-keepalive "no-keepalive" #f)
 ;;        (no-sessionid "no-sessionid" #f)
-;;        (ntlm "ntlm" #f)
 ;;        (pass "pass=s" )
-;;        (post301 "post301" #f)
-;;        (post302 "post302" #f)
-;;        (proxy-anyauth "proxy-anyauth" #f)
-;;        (proxy-basic "proxy-basic" #f)
-;;        (proxy-digest "proxy-digest" #f)
-;;        (proxy-negotiate "proxy-negotiate" #f)
-;;        (proxy-ntlm "proxy-ntlm" #f)
-;;        (proxy1.0 "proxy1.0=s" )
 ;;        (pubkey "pubkey=s" )
 ;;        (random-file "random-file=s" )
 ;;        (raw "raw" #f)
@@ -562,47 +728,34 @@
 ;;        (ipv6 "6|ipv6" #f)
 ;;        (use-ascii "B|use-ascii" #f)
 ;;        (continue-at "C|continue-at=s" )
-;;        (dump-header "D|dump-header=s" )
 ;;        (cert "E|cert=s" )
 ;;        (form "F|form=s" )
-;;        (get "G|get" #f)
-;;        (header "H|header=s" )
-;;        (head "I|head" #f)
 ;;        (config "K|config=s" )
 ;;        (no-buffer "N|no-buffer" #f)
 ;;        (ftp-port "P|ftp-port=s" )
 ;;        (quote "Q|quote=s" )
-;;        (remote-time "R|remote-time=s" )
 ;;        (show-error "S|show-error" #f)
-;;        (upload-file "T|upload-file=s" )
-;;        (proxy-user "U|proxy-user=s" )
 ;;        (speed-limit "Y|speed-limit=s" )
 ;;        (append "a|append" #f)
-;;        (cookie "b|cookie=s" )
-;;        (cookie-jar "c|cookie-jar=s" )
-;;        (data "d|data=s" )
-;;        (referer "e|referer=s" )
-;;        (fail "f|fail" #f)
 ;;        (globoff "g|globoff" #f)
-;;        (include "i|include" #f)
-;;        (junk-session-cookies "j|junk-session-cookies" #f)
 ;;        (insecure "k|insecure" #f)
 ;;        (list-only "l|list-only" #f)
-;;        (max-time "m|max-time=s" )
 ;;        (netrc "n|netrc" #f)
 ;;        (proxytunnel "p|proxytunnel" #f)
 ;;        (q "q" #f)
 ;;        (range "r|range=s" )
 ;;        (silent "s|silent" #f)
 ;;        (telnet-option "t|telnet-option=s" )
-;;        (user "u|user=s" )
 ;;        (write-out "w|write-out=s" )
 ;;        (speed-time "y|speed-time=s" )
 ;;        (time-cond "z|time-cond=s"))
+;;        (keepalive-time "keepalive-time=i" #f)
 
 ; procedure
 (define-method curl-setopt! ((curl <curl>) opt val)
-  (let1 res (curl-easy-setopt (handler-of curl) opt val)
+  (let* ((hnd (handler-of curl))
+	 (res (curl-easy-setopt (handler-of curl) opt val)))
+    (slot-set! curl 'code res)
     (if (= res 0) #t #f)))
 
 (define-method curl-perform ((curl <curl>))
@@ -612,48 +765,58 @@
     (cond ((= res 0) #t)
 	  (else #f))))
 
-(define-method curl-getinfo ((curl <curl>))
+(define-method curl-strerror ((curl <curl>))
+  (if (code-of curl) 
+      (curl-easy-strerror (code-of curl))
+      #f))
+
+(define-method curl-strerror ((share <curl-share>))
+  (if (code-of share) 
+      (curl-share-strerror (code-of share))
+      #f))
+
+(define-method curl-getinfo ((curl <curl>) . info)
   (let* ((hnd (handler-of curl))
 	 (_ curl-easy-getinfo)
-	 (features (cdr (assoc "features" (curl-version-info))))
-	 (protocols (cdr (assoc "protocols" (curl-version-info))))
-	 (scheme (values-ref (uri-parse (url-of curl)) 0)))
+	 (all (remove 
+	       (cut equal? CURLINFO_NONE <>)
+	       `(,CURLINFO_EFFECTIVE_URL 
+		 ,CURLINFO_RESPONSE_CODE 
+		 ,CURLINFO_TOTAL_TIME
+		 ,CURLINFO_NAMELOOKUP_TIME 
+		 ,CURLINFO_CONNECT_TIME 
+		 ,CURLINFO_PRETRANSFER_TIME 
+		 ,CURLINFO_SIZE_UPLOAD 
+		 ,CURLINFO_SIZE_DOWNLOAD 
+		 ,CURLINFO_SPEED_DOWNLOAD 
+		 ,CURLINFO_SPEED_UPLOAD 
+		 ,CURLINFO_HEADER_SIZE 
+		 ,CURLINFO_REQUEST_SIZE 
+		 ,CURLINFO_CONTENT_LENGTH_UPLOAD 
+		 ,CURLINFO_STARTTRANSFER_TIME 
+		 ,CURLINFO_CONTENT_TYPE 
+		 ,CURLINFO_CONTENT_LENGTH_DOWNLOAD 
+		 ,CURLINFO_HTTP_CONNECTCODE
+		 ,(if (fc "ssl") CURLINFO_SSL_VERIFYRESULT CURLINFO_NONE)
+		 ,(if (vc "7.5") CURLINFO_FILETIME CURLINFO_NONE)
+		 ,(if (vc "7.9.7") CURLINFO_REDIRECT_TIME  CURLINFO_NONE)
+		 ,(if (vc "7.9.7") CURLINFO_REDIRECT_COUNT CURLINFO_NONE)
+		 ,(if (vc "7.10.8") CURLINFO_HTTPAUTH_AVAIL CURLINFO_NONE)
+		 ,(if (vc "7.10.8") CURLINFO_PROXYAUTH_AVAIL CURLINFO_NONE)
+		 ,(if (vc "7.12.2") CURLINFO_OS_ERRNO CURLINFO_NONE)
+		 ,(if (vc "7.12.2") CURLINFO_NUM_CONNECTS CURLINFO_NONE)
+ 		 ,(if (and (vc "7.13.3") (fc "ssl")) CURLINFO_SSL_ENGINES CURLINFO_NONE)
+;; 		 ,(if (vc "7.14.1") CURLINFO_COOKIELIST CURLINFO_NONE)
+		 ,(if (vc "7.15.2") CURLINFO_LASTSOCKET CURLINFO_NONE)
+		 ,(if (and (vc "7.15.4") (sc "ftp" (url-of curl))) CURLINFO_FTP_ENTRY_PATH CURLINFO_NONE)
+		 ,(if (vc "7.18.2") CURLINFO_REDIRECT_URL CURLINFO_NONE)
+		 ,(if (vc "7.19.0") CURLINFO_PRIMARY_IP CURLINFO_NONE)
+		 ,(if (vc "7.19.0") CURLINFO_APPCONNECT_TIME CURLINFO_NONE)
+		 ,(if (vc "7.19.1") CURLINFO_CERTINFO CURLINFO_NONE)
+		 ,(if (vc "7.19.4") CURLINFO_CONDITION_UNMET CURLINFO_NONE))))
+	 (ls (if (null? info) all (filter (cut equal? (car info) <> ) all))))
     (if (code-of curl)
-	`(,(cons 'EFFECTIVE_URL (_ hnd CURLINFO_EFFECTIVE_URL))
-	  ,(cons 'RESPONSE_CODE (_ hnd CURLINFO_RESPONSE_CODE))
-	  ,(cons 'TOTAL_TIME (_ hnd CURLINFO_TOTAL_TIME))
-	  ,(cons 'NAMELOOKUP_TIME (_ hnd CURLINFO_NAMELOOKUP_TIME))
-	  ,(cons 'CONNECT_TIME (_ hnd CURLINFO_CONNECT_TIME))
-	  ,(cons 'PRETRANSFER_TIME (_ hnd CURLINFO_PRETRANSFER_TIME))
-	  ,(cons 'SIZE_UPLOAD (_ hnd CURLINFO_SIZE_UPLOAD))
-	  ,(cons 'SIZE_DOWNLOAD (_ hnd CURLINFO_SIZE_DOWNLOAD))
-	  ,(cons 'SPEED_DOWNLOAD (_ hnd CURLINFO_SPEED_DOWNLOAD))
-	  ,(cons 'SPEED_UPLOAD (_ hnd CURLINFO_SPEED_UPLOAD))
-	  ,(cons 'HEADER_SIZE (_ hnd CURLINFO_HEADER_SIZE))
-	  ,(cons 'REQUEST_SIZE (_ hnd CURLINFO_REQUEST_SIZE))
-	  ,(cons 'SSL_VERIFYRESULT (_ hnd CURLINFO_SSL_VERIFYRESULT))
-	  ,(cons 'FILETIME (_ hnd CURLINFO_FILETIME))
-	  ,(cons 'CONTENT_LENGTH_DOWNLOAD (_ hnd CURLINFO_CONTENT_LENGTH_DOWNLOAD))
-	  ,(cons 'CONTENT_LENGTH_UPLOAD (_ hnd CURLINFO_CONTENT_LENGTH_UPLOAD))
-	  ,(cons 'STARTTRANSFER_TIME (_ hnd CURLINFO_STARTTRANSFER_TIME))
-	  ,(cons 'CONTENT_TYPE (_ hnd CURLINFO_CONTENT_TYPE))
-	  ,(cons 'REDIRECT_TIME (_ hnd CURLINFO_REDIRECT_TIME))
-	  ,(cons 'REDIRECT_COUNT (_ hnd CURLINFO_REDIRECT_COUNT))
-;;       ,(cons 'PRIVATE (_ hnd CURLINFO_PRIVATE))
-	  ,(cons 'HTTP_CONNECTCODE (_ hnd CURLINFO_HTTP_CONNECTCODE))
-	  ,(cons 'HTTPAUTH_AVAIL (_ hnd CURLINFO_HTTPAUTH_AVAIL))
-	  ,(cons 'PROXYAUTH_AVAIL (_ hnd CURLINFO_PROXYAUTH_AVAIL))
-	  ,(cons 'OS_ERRNO (_ hnd CURLINFO_OS_ERRNO))
-	  ,(cons 'NUM_CONNECTS (_ hnd CURLINFO_NUM_CONNECTS))
-;;       ,(cons 'SSL_ENGINES (_ hnd CURLINFO_SSL_ENGINES))
-;;	  ,(cons 'COOKIELIST (_ hnd CURLINFO_COOKIELIST))
-	  ,(cons 'LASTSOCKET (_ hnd CURLINFO_LASTSOCKET))
-;	  ,(when ((#/ftp/ scheme)) (cons 'FTP_ENTRY_PATH (_ hnd CURLINFO_FTP_ENTRY_PATH)))
-	  ,(cons 'REDIRECT_URL (_ hnd CURLINFO_REDIRECT_URL))
-;;      ,(cons 'PRIMARY_IP (_ hnd CURLINFO_PRIMARY_IP))
-;;      ,(cons 'APPCONNECT_TIME (_ hnd CURLINFO_APPCONNECT_TIME))
-;;      ,(cons 'CERTINFO (_ hnd CURLINFO_CERTINFO))
-	  )
+	(map (lambda (info) (cons "a" (_ hnd info))) ls)
 	#f)))
 
 (define-method curl-reset! ((curl <curl>))
@@ -665,68 +828,98 @@
 	   #t)
 	  (else #f))))
 
+(define-method curl-set-http-header! ((curl <curl>) ls)
+  (curl-setopt! curl CURLOPT_HTTPHEADER (list->curl-slist ls)))
 
 ; I/O
 (define-method curl-open-output-file ((curl <curl>) filename)
-  (let1 hnd (handler-of curl)
-    (curl-open-file hnd CURLOPT_WRITEDATA filename)))
+  (curl-open-file (handler-of curl) CURLOPT_WRITEDATA filename))
+
+(define-method curl-open-input-file ((curl <curl>) filename)
+  (curl-open-file (handler-of curl) CURLOPT_READDATA filename))
 
 (define-method curl-open-header-file ((curl <curl>) filename)
-  (let1 hnd (handler-of curl)
-    (curl-open-file hnd CURLOPT_WRITEHEADER filename)))
-	 
-(define-method curl-open-output-port ((curl <curl>) . filename)
-  (let ((hnd (handler-of curl))
-	(fn (if (null? filename) #f (car filename))))
-    (if fn (curl-open-port hnd CURLOPT_WRITEDATA (open-output-file fn))
-	(curl-open-port hnd CURLOPT_WRITEDATA (open-output-string)))))
+  (curl-open-file (handler-of curl) CURLOPT_WRITEHEADER filename))
 
-(define-method curl-open-header-port ((curl <curl>) . filename)
-  (let ((hnd (handler-of curl))
-	(fn (if (null? filename) #f (car filename))))
-    (if fn (curl-open-port hnd CURLOPT_WRITEHEADER (open-output-file fn))
-	(curl-open-port hnd CURLOPT_WRITEHEADER (open-output-string)))))
+(define-method curl-open-error-file ((curl <curl>) filename)
+  (curl-open-file (handler-of curl) CURLOPT_STDERR filename))
+	 
+(define-method curl-open-output-port ((curl <curl>) . out)
+  (curl-open-port (handler-of curl) CURLOPT_WRITEDATA 
+		  (if (null? out)
+		      (open-output-string)
+		      (if (output-port? (car out)) (car out)
+			  (error "Set output port.")))))
+
+(define-method curl-open-input-port ((curl <curl>) in)
+  (curl-open-port (handler-of curl) CURLOPT_READDATA
+		  (if (input-port? in) in
+		      (else (error "Set input port.")))))
+
+(define-method curl-open-header-port ((curl <curl>) . out)
+  (curl-open-port (handler-of curl) CURLOPT_WRITEHEADER
+		  (if (null? out)
+		      (open-output-string)
+		      (if (output-port? (car out)) (car out)
+			  (error "Set output port.")))))
+
+(define (curl-headers->alist headers-str . num)
+  (let1 ls (remove null? (map (lambda  (h) (rfc822-read-headers (open-input-string h)))
+			      (string-split headers-str "\r\n\r\n")))
+    (if (null? num) ls
+	(let1 n (car num)
+	  (if (>= n 0) (list-ref ls n)
+	      (list-ref ls (- (length ls) 1)))))))
 
 
 ; wrapper procedure
-(define (curl url . optstr)
-  ((make <curl> :url url :options (car optstr))))
-
 ;; Common
-(define (http-common hnd)
-  (curl-easy-setopt hnd CURLOPT_USERAGENT 
-		    (string-append "Gauche " (gauche-version) "/libcurl " (curl-version)))
-  (curl-easy-setopt hnd CURLOPT_AUTOREFERER 1)
-  (curl-easy-setopt hnd CURLOPT_ENCODING )
-  (curl-easy-setopt hnd CURLOPT_HTTP_VERSION CURL_HTTP_VERSION_NONE)
-  (curl-easy-setopt hnd CURLOPT_HTTPHEADER (list->curl-slist head-ls)))
+(define (http-common method hostname path body . opts)
+  (let-keywords opts ((no-redirect :no-redirect #f)
+		      ;(sink :sink (open-output-string))
+		      ;(flusher :flusher (lambda (sink _) (get-output-string sink)))
+		      (ssl :ssl #f)
+		      (verbose :verbose #f)
+		      . opt)
+		(let* ((curl (make <curl> :url (string-append (if ssl "https://" "http://") hostname path)))
+		       (output (curl-open-output-port curl))
+		       (header (curl-open-header-port curl)))
+		  (when verbose (curl-setopt! curl CURLOPT_VERBOSE 1))
+		  (curl-setopt! curl CURLOPT_CUSTOMREQUEST (symbol->string method))
+		  (curl-setopt! curl CURLOPT_USERAGENT (string-append "Gauche/" (gauche-version) " " (curl-version)))
+		  (curl-setopt! curl CURLOPT_HTTP_VERSION CURL_HTTP_VERSION_NONE)
+		  (when body (curl-setopt! curl CURLOPT_POSTFIELDS body))
+		  (if no-redirect (curl-setopt! curl CURLOPT_FOLLOWLOCATION 0)
+		      (curl-setopt! curl CURLOPT_FOLLOWLOCATION 1))
+		  (unless (null? opt) (curl-set-http-header! 
+				       curl 
+				       (map (lambda (h) (string-append (keyword->string (car h)) ": " (cadr h))) (slices opt 2))))
+		  (if (curl)
+		      (values
+		       (cdar (curl-getinfo curl CURLINFO_RESPONSE_CODE))
+		       (curl-headers->alist (get-output-string header) -1)
+		       (get-output-string output))
+		      #f))))
 
 ;; GET
-(define (http-get url str . head-ls)
-  (let1 hnd (curl-easy-init)
-    (curl-easy-setopt hnd CURLOPT_URL url)
-    (curl-easy-setopt hnd CURLOPT_HTTPGET 1)
-    (curl-easy-perform hnd)
-    (values 
-     (curl-easy-getinfo hnd CURLINFO_RESPONSE_CODE))))
+(define (http-get hostname path . opt)
+  (apply http-common 'GET hostname path #f opt))
 
+;; HEAD
+(define (http-head hostname path . opt)
+  (apply http-common 'HEAD hostname path #f opt))
 
 ;; POST
-(define (http-post url str . head-ls)
-  (let1 hnd (curl-easy-init)
-    (curl-easy-setopt hnd CURLOPT_URL url)
-    (curl-easy-setopt hnd CURLOPT_CUSTOMREQUEST "POST")
-    (curl-easy-setopt hnd CURLOPT_POSTFIELDS str)
-    (curl-easy-setopt hnd CURLOPT_POSTFIELDSIZE (string-size str))
-    (curl-easy-setopt hnd CURLOPT_HTTPHEADER s2)
-    (curl-easy-perform hnd)
-    (values 
-     (curl-easy-getinfo hnd CURLINFO_RESPONSE_CODE))))
+(define (http-post hostname path body . opt)
+  (apply http-common 'POST hostname path body opt))
 
 ;; PUT
+(define (http-put hostname path body . opt)
+  (apply http-common 'PUT hostname path body opt))
 
 ;; DELETE
-
+(define (http-delete hostname path . opt)
+  (apply http-common 'DELETE hostname path #f opt))
 
 ;; Epilogue
 (provide "curl")
