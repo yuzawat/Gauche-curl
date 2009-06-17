@@ -307,6 +307,9 @@ struct curl_slist *list_to_curl_slist (ScmObj ls)
 {
   struct curl_slist *slist, *last, *next;
   ScmObj str;
+
+  if (SCM_NULLP(ls)) Scm_Error("not allow null list");
+
   slist = SCM_NEW(struct curl_slist);
   last = SCM_NEW(struct curl_slist);
   SCM_FOR_EACH(str, ls){
@@ -327,9 +330,14 @@ struct curl_slist *list_to_curl_slist (ScmObj ls)
   return slist;
 }
 
-ScmObj curl_slist_to_list (struct curl_slist *slist)
+ScmObj curl_slist_to_list (void *slist)
 {
   ScmObj head = SCM_NIL, tail = SCM_NIL;
+  if (slist == NULL) {
+    return SCM_FALSE;
+  } else {
+    (struct curl_slist*)slist;
+  }
   struct curl_slist *next;
   int i = 0, j = 0;
   next = SCM_NEW(struct curl_slist);
@@ -348,7 +356,7 @@ ScmObj curl_slist_to_list (struct curl_slist *slist)
 
 ScmObj _curl_easy_getinfo(CURL* hnd, int info)
 {
-  ScmObj resultobj;
+  ScmObj res;
   int rc;
   if (info == CURLINFO_EFFECTIVE_URL ||
       info == CURLINFO_CONTENT_TYPE ||
@@ -357,19 +365,27 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
       info == CURLINFO_REDIRECT_URL ) {
     const char *result;
     rc = curl_easy_getinfo(hnd, info, &result);
-    if ( rc == 0) {
-      resultobj = SCM_MAKE_STR_COPYING(result);
+    if ( rc == 0 ) {
+      if (result == NULL) {
+	res = SCM_FALSE;
+      } else {
+	res = SCM_MAKE_STR_COPYING(result);
+      }
     } else {
-      resultobj = SCM_FALSE;
+      res = SCM_FALSE;
     }
   } else if (info == CURLINFO_SSL_ENGINES ||
 	     info == CURLINFO_COOKIELIST ) {
     struct curl_slist *result;
     rc = curl_easy_getinfo(hnd, info, &result);
     if ( rc == 0) {
-      resultobj = result;
+      if (result == NULL) {
+	res = SCM_FALSE;
+      } else {
+	res = curl_slist_to_list(result);
+      }
     } else {
-      resultobj = SCM_FALSE;
+      res = SCM_FALSE;
     }
   } else if (info == CURLINFO_RESPONSE_CODE ||
 	     info == CURLINFO_HEADER_SIZE ||
@@ -386,9 +402,13 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
     long *result;
     rc = curl_easy_getinfo(hnd, info, &result);
     if ( rc == 0) {
-      resultobj = SCM_MAKE_INT(result);
+      if (result == NULL) {
+	res = SCM_FALSE;
+      } else {
+	res = SCM_MAKE_INT(result);
+      }
     } else {
-      resultobj = SCM_FALSE;
+      res = SCM_FALSE;
     }
   } else if (info == CURLINFO_TOTAL_TIME ||
 	     info == CURLINFO_NAMELOOKUP_TIME ||
@@ -406,14 +426,18 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
     double *result;
     rc = curl_easy_getinfo(hnd, info, &result);
     if ( rc == 0) {
-      resultobj = SCM_MAKE_INT(result);
+      if (result == NULL) {
+	res = SCM_FALSE;
+      } else {
+	res = SCM_MAKE_INT(result);
+      }
     } else {
-      resultobj = SCM_FALSE;
+      res = SCM_FALSE;
     }
   } else {
-    resultobj = SCM_FALSE;
+    res = SCM_FALSE;
   }
-  return resultobj;
+  return res;
 }
 
 /*

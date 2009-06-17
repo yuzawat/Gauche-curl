@@ -441,7 +441,7 @@
       (define-enum CURLOPT_NOPROXY)
       (define-enum CURLOPT_SOCKS5_GSSAPI_SERVICE)
       (define-enum CURLOPT_SOCKS5_GSSAPI_NEC)
-      (define-enum CURLOPT_TFTPBLKSIZE)))
+      (define-enum CURLOPT_TFTP_BLKSIZE)))
 
 (define-enum CURLOPTTYPE_OFF_T)
 

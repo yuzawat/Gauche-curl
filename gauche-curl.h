@@ -50,7 +50,7 @@ extern ScmObj curl_open_port(CURL* hnd, int type, ScmObj *scm_port);
 
 //conver from/to curl_slist to/from sheme list
 extern struct curl_slist *list_to_curl_slist (ScmObj ls);
-extern ScmObj curl_slist_to_list (struct curl_slist *slist);
+extern ScmObj curl_slist_to_list (void *slist);
 
 /* CURLOPT_IOCTLFUNCTION */
 /* CURLOPT_SEEKFUNCTION */

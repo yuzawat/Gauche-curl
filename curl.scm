@@ -7,14 +7,14 @@
 ;;;
 ;;; Example
 ;;;
-;;;  (let* ((c (make <curl> :url "http://example.tld/test/" :options "-L"))
-;;;         (output-str-port (curl-open-output-port c))
-;;;         (header-str-port (curl-open-header-port c)))
-;;;    (c)
-;;;    (values  
-;;;     (curl-getinfo c CURLINFO_RESPONSE_CODE)
-;;;     (get-output-string output-str-port)
-;;;     (get-output-string header-str-port)))
+;;; (let* ((c (make <curl> :url "http://example.tld/test/" :options "-L"))
+;;;        (output-str-port (curl-open-output-port c))
+;;;        (header-str-port (curl-open-header-port c)))
+;;;   (c)
+;;;   (values  
+;;;    (cdr (assq 'RESPONSE_CODE (curl-getinfo c)))
+;;;    (get-output-string header-str-port)
+;;;    (get-output-string output-str-port)))
 
 (define-module curl
   (use gauche.mop.singleton)
@@ -75,6 +75,7 @@
    curl-setopt!
    curl-perform
    curl-getinfo
+   curl-cleanup!
    curl-reset!
    curl-strerror
    curl-open-output-file
@@ -471,6 +472,7 @@
 (define-method object-apply ((curl <curl>))
   (curl-perform curl))
 
+
 ;; utils
 ; libcurl version check
 (define (vc numstr)
@@ -564,8 +566,7 @@
 	    (if (#/\;auto$/ referer) (_ curl CURLOPT_AUTOREFERER 1) (_ curl CURLOPT_AUTOREFERER 0))
 	    (cond ((#/(^.+)\;auto$/ referer) => (lambda (m) (unless (= (string-length (m 1)) 0) (_ curl CURLOPT_REFERER (m 1)))))))
 	  (_ curl CURLOPT_REFERER #f))
-      (when compressed (begin (_ curl CURLOPT_ENCODING "") 
-			      (_ curl CURLOPT_HTTP_CONTENT_DECODING 1)))
+      (when compressed (_ curl CURLOPT_ENCODING ""))
       (if fail (_ curl CURLOPT_FAILONERROR 1) (_ curl CURLOPT_FAILONERROR 0))
       (when get (_ curl CURLOPT_HTTPGET 1))
       (when header (_ curl CURLOPT_HTTPHEADER (list->curl_slist (string-split header #\,))))
@@ -653,8 +654,10 @@
       ;; cookie
       (if junk-session-cookies (_ curl CURLOPT_COOKIESESSION 0) (_ curl CURLOPT_COOKIESESSION 1))
       (if cookie 
-	  (if (#/=/ cookie) (_ curl CURLOPT_COOKIE cookie) 
-	      (_ curl CURLOPT_COOKIEFILE cookie))
+	  (cond ((#/=/ cookie) 
+		 (_ curl CURLOPT_COOKIE cookie))
+		(else 
+		 (_ curl CURLOPT_COOKIEFILE cookie)))
 	  (begin
 	    (_ curl CURLOPT_COOKIE #f)
 	    (_ curl CURLOPT_COOKIEFILE #f)))
@@ -753,17 +756,19 @@
 
 ; procedure
 (define-method curl-setopt! ((curl <curl>) opt val)
-  (let* ((hnd (handler-of curl))
-	 (res (curl-easy-setopt (handler-of curl) opt val)))
-    (slot-set! curl 'code res)
-    (if (= res 0) #t #f)))
+  (let1 hnd (handler-of curl)
+    (if hnd (let1 res (curl-easy-setopt hnd opt val)
+	      (slot-set! curl 'code res)
+	      (if (= res 0) #t #f))
+	(error "curl handler is invalid."))))
 
 (define-method curl-perform ((curl <curl>))
-  (let* ((hnd (handler-of curl))
-	 (res (curl-easy-perform hnd)))
-    (slot-set! curl 'code res)
-    (cond ((= res 0) #t)
-	  (else #f))))
+  (let1 hnd (handler-of curl)
+    (if hnd (let1 res (curl-easy-perform hnd)
+	      (slot-set! curl 'code res)
+	      (cond ((= res 0) #t)
+		    (else #f)))
+	(error "curl handler is invalid."))))
 
 (define-method curl-strerror ((curl <curl>))
   (if (code-of curl) 
@@ -775,93 +780,125 @@
       (curl-share-strerror (code-of share))
       #f))
 
-(define-method curl-getinfo ((curl <curl>) . info)
-  (let* ((hnd (handler-of curl))
-	 (_ curl-easy-getinfo)
-	 (all (remove 
-	       (cut equal? CURLINFO_NONE <>)
-	       `(,CURLINFO_EFFECTIVE_URL 
-		 ,CURLINFO_RESPONSE_CODE 
-		 ,CURLINFO_TOTAL_TIME
-		 ,CURLINFO_NAMELOOKUP_TIME 
-		 ,CURLINFO_CONNECT_TIME 
-		 ,CURLINFO_PRETRANSFER_TIME 
-		 ,CURLINFO_SIZE_UPLOAD 
-		 ,CURLINFO_SIZE_DOWNLOAD 
-		 ,CURLINFO_SPEED_DOWNLOAD 
-		 ,CURLINFO_SPEED_UPLOAD 
-		 ,CURLINFO_HEADER_SIZE 
-		 ,CURLINFO_REQUEST_SIZE 
-		 ,CURLINFO_CONTENT_LENGTH_UPLOAD 
-		 ,CURLINFO_STARTTRANSFER_TIME 
-		 ,CURLINFO_CONTENT_TYPE 
-		 ,CURLINFO_CONTENT_LENGTH_DOWNLOAD 
-		 ,CURLINFO_HTTP_CONNECTCODE
-		 ,(if (fc "ssl") CURLINFO_SSL_VERIFYRESULT CURLINFO_NONE)
-		 ,(if (vc "7.5") CURLINFO_FILETIME CURLINFO_NONE)
-		 ,(if (vc "7.9.7") CURLINFO_REDIRECT_TIME  CURLINFO_NONE)
-		 ,(if (vc "7.9.7") CURLINFO_REDIRECT_COUNT CURLINFO_NONE)
-		 ,(if (vc "7.10.8") CURLINFO_HTTPAUTH_AVAIL CURLINFO_NONE)
-		 ,(if (vc "7.10.8") CURLINFO_PROXYAUTH_AVAIL CURLINFO_NONE)
-		 ,(if (vc "7.12.2") CURLINFO_OS_ERRNO CURLINFO_NONE)
-		 ,(if (vc "7.12.2") CURLINFO_NUM_CONNECTS CURLINFO_NONE)
- 		 ,(if (and (vc "7.13.3") (fc "ssl")) CURLINFO_SSL_ENGINES CURLINFO_NONE)
-;; 		 ,(if (vc "7.14.1") CURLINFO_COOKIELIST CURLINFO_NONE)
-		 ,(if (vc "7.15.2") CURLINFO_LASTSOCKET CURLINFO_NONE)
-		 ,(if (and (vc "7.15.4") (sc "ftp" (url-of curl))) CURLINFO_FTP_ENTRY_PATH CURLINFO_NONE)
-		 ,(if (vc "7.18.2") CURLINFO_REDIRECT_URL CURLINFO_NONE)
-		 ,(if (vc "7.19.0") CURLINFO_PRIMARY_IP CURLINFO_NONE)
-		 ,(if (vc "7.19.0") CURLINFO_APPCONNECT_TIME CURLINFO_NONE)
-		 ,(if (vc "7.19.1") CURLINFO_CERTINFO CURLINFO_NONE)
-		 ,(if (vc "7.19.4") CURLINFO_CONDITION_UNMET CURLINFO_NONE))))
-	 (ls (if (null? info) all (filter (cut equal? (car info) <> ) all))))
-    (if (code-of curl)
-	(map (lambda (info) (cons "a" (_ hnd info))) ls)
-	#f)))
+(define-method curl-getinfo ((curl <curl>))
+  (let ((hnd (handler-of curl))
+	(_ curl-easy-getinfo))
+    (if hnd
+	(remove not
+	`(,(cons 'EFFECTIVE_URL (_ hnd CURLINFO_EFFECTIVE_URL))
+	  ,(cons 'RESPONSE_CODE (_ hnd CURLINFO_RESPONSE_CODE))
+	  ,(cons 'TOTAL_TIME (_ hnd CURLINFO_TOTAL_TIME))
+	  ,(cons 'NAMELOOKUP_TIME (_ hnd CURLINFO_NAMELOOKUP_TIME)) 
+	  ,(cons 'CONNECT_TIME (_ hnd CURLINFO_CONNECT_TIME))
+	  ,(cons 'PRETRANSFER_TIME (_ hnd CURLINFO_PRETRANSFER_TIME)) 
+	  ,(cons 'SIZE_UPLOAD (_ hnd CURLINFO_SIZE_UPLOAD))
+	  ,(cons 'SIZE_DOWNLOAD (_ hnd CURLINFO_SIZE_DOWNLOAD)) 
+	  ,(cons 'SPEED_DOWNLOAD (_ hnd CURLINFO_SPEED_DOWNLOAD)) 
+	  ,(cons 'SPEED_UPLOAD (_ hnd CURLINFO_SPEED_UPLOAD))
+	  ,(cons 'HEADER_SIZE (_ hnd CURLINFO_HEADER_SIZE))
+	  ,(cons 'REQUEST_SIZE (_ hnd CURLINFO_REQUEST_SIZE)) 
+	  ,(cons 'CONTENT_LENGTH_UPLOAD (_ hnd CURLINFO_CONTENT_LENGTH_UPLOAD))
+	  ,(cons 'STARTTRANSFER_TIME (_ hnd CURLINFO_STARTTRANSFER_TIME))
+	  ,(cons 'CONTENT_TYPE (_ hnd CURLINFO_CONTENT_TYPE))
+	  ,(cons 'CONTENT_LENGTH_DOWNLOAD (_ hnd CURLINFO_CONTENT_LENGTH_DOWNLOAD))
+	  ,(cons 'HTTP_CONNECTCODE (_ hnd CURLINFO_HTTP_CONNECTCODE))
+	  ,(if (fc "SSL") (cons 'SSL_VERIFYRESULT (_ hnd CURLINFO_SSL_VERIFYRESULT)) #f)
+	  ,(if (vc "7.5") (cons 'FILETIME (_ hnd CURLINFO_FILETIME)) #f)
+	  ,(if (vc "7.9.7") (cons 'REDIRECT_TIME (_ hnd CURLINFO_REDIRECT_TIME)) #f)
+	  ,(if (vc "7.9.7") (cons 'REDIRECT_COUNT (_ hnd CURLINFO_REDIRECT_COUNT)) #f)
+	  ,(if (vc "7.10.8") (cons 'HTTPAUTH_AVAIL (_ hnd CURLINFO_HTTPAUTH_AVAIL)) #f)
+	  ,(if (vc "7.10.8") (cons 'PROXYAUTH_AVAIL (_ hnd CURLINFO_PROXYAUTH_AVAIL)) #f)
+	  ,(if (vc "7.12.2") (cons 'OS_ERRNO (_ hnd CURLINFO_OS_ERRNO)) #f)
+	  ,(if (vc "7.12.2") (cons 'NUM_CONNECTS (_ hnd CURLINFO_NUM_CONNECTS)) #f)
+	  ,(if (and (vc "7.13.3") (fc "SSL")) (cons 'SSL_ENGINES (_ hnd CURLINFO_SSL_ENGINES)) #f)
+	  ,(if (vc "7.14.1") (cons 'COOKIELIST (_ hnd CURLINFO_COOKIELIST)) #f)
+	  ,(if (vc "7.15.2") (cons 'LASTSOCKET (_ hnd CURLINFO_LASTSOCKET)) #f)
+	  ,(if (and (vc "7.15.4") (sc "ftp" (url-of curl))) (cons 'FTP_ENTRY_PATH (_ hnd CURLINFO_FTP_ENTRY_PATH)) #f)
+	  ,(if (vc "7.18.2") (cons 'REDIRECT_URL (_ hnd CURLINFO_REDIRECT_URL)) #f)
+	  ,(if (vc "7.19.0") (cons 'PRIMARY_IP (_ hnd CURLINFO_PRIMARY_IP)) #f)
+	  ,(if (vc "7.19.0") (cons 'APPCONNECT_TIME (_ hnd CURLINFO_APPCONNECT_TIME)) #f)
+	  ,(if (vc "7.19.1") (cons 'CERTINFO (_ hnd CURLINFO_CERTINFO)) #f)
+	  ,(if (vc "7.19.4") (cons 'CONDITION_UNMET (_ hnd CURLINFO_CONDITION_UNMET)) #f)))
+    (error "curl handler is invalid."))))
+
+(define-method curl-cleanup! ((curl <curl>))
+  (let1 hnd (handler-of curl)
+    (if hnd
+	(let1 res (curl-easy-cleanup hnd)
+	  (cond ((undefined? res)
+		 (slot-set! curl 'handler #f)
+		 (slot-set! curl 'url "")
+		 (slot-set! curl 'code #f)
+		 #t)
+		(else #f)))
+	(error "curl handler is invalid."))))
 
 (define-method curl-reset! ((curl <curl>))
-  (let* ((hnd (handler-of curl))
-	 (res (curl-easy-reset hnd)))
-    (cond ((undefined? res)
-	   (curl-setopt! curl CURLOPT_URL (url-of curl))
-	   (slot-set! curl 'code #f)
-	   #t)
-	  (else #f))))
+  (let1 hnd (handler-of curl)
+    (if hnd
+	(let1 res (curl-easy-reset hnd)
+	  (cond ((undefined? res)
+		 (curl-setopt! curl CURLOPT_URL (url-of curl))
+		 (slot-set! curl 'code #f)
+		 #t)
+		(else #f)))
+	(error "curl handler is invalid."))))
 
 (define-method curl-set-http-header! ((curl <curl>) ls)
   (curl-setopt! curl CURLOPT_HTTPHEADER (list->curl-slist ls)))
 
 ; I/O
 (define-method curl-open-output-file ((curl <curl>) filename)
-  (curl-open-file (handler-of curl) CURLOPT_WRITEDATA filename))
+  (let1 hnd (handler-of curl)
+    (if hnd
+	(curl-open-file hnd CURLOPT_WRITEDATA filename)
+	(error "curl handler is invalid."))))
 
 (define-method curl-open-input-file ((curl <curl>) filename)
-  (curl-open-file (handler-of curl) CURLOPT_READDATA filename))
+  (let1 hnd (handler-of curl)
+    (if hnd
+	(curl-open-file hnd CURLOPT_READDATA filename)
+	(error "curl handler is invalid."))))
 
 (define-method curl-open-header-file ((curl <curl>) filename)
-  (curl-open-file (handler-of curl) CURLOPT_WRITEHEADER filename))
+  (let1 hnd (handler-of curl)
+    (if hnd
+	(curl-open-file hnd CURLOPT_WRITEHEADER filename)
+	(error "curl handler is invalid."))))
 
 (define-method curl-open-error-file ((curl <curl>) filename)
-  (curl-open-file (handler-of curl) CURLOPT_STDERR filename))
+  (let1 hnd (handler-of curl)
+    (if hnd
+	(curl-open-file hnd CURLOPT_STDERR filename)
+	(error "curl handler is invalid."))))
 	 
 (define-method curl-open-output-port ((curl <curl>) . out)
-  (curl-open-port (handler-of curl) CURLOPT_WRITEDATA 
-		  (if (null? out)
-		      (open-output-string)
-		      (if (output-port? (car out)) (car out)
-			  (error "Set output port.")))))
+  (let1 hnd (handler-of curl)
+    (if hnd
+	(curl-open-port hnd CURLOPT_WRITEDATA 
+			(if (null? out)
+			    (open-output-string)
+			    (if (output-port? (car out)) (car out)
+				(error "Set output port."))))
+	(error "curl handler is invalid."))))
 
 (define-method curl-open-input-port ((curl <curl>) in)
-  (curl-open-port (handler-of curl) CURLOPT_READDATA
-		  (if (input-port? in) in
-		      (else (error "Set input port.")))))
+  (let1 hnd (handler-of curl)
+    (if hnd
+	(curl-open-port hnd CURLOPT_READDATA
+			(if (input-port? in) in
+			    (else (error "Set input port."))))
+	(error "curl handler is invalid."))))
 
 (define-method curl-open-header-port ((curl <curl>) . out)
-  (curl-open-port (handler-of curl) CURLOPT_WRITEHEADER
-		  (if (null? out)
-		      (open-output-string)
-		      (if (output-port? (car out)) (car out)
-			  (error "Set output port.")))))
+  (let1 hnd (handler-of curl)
+    (if hnd
+	(curl-open-port hnd CURLOPT_WRITEHEADER
+			(if (null? out)
+			    (open-output-string)
+			    (if (output-port? (car out)) (car out)
+				(error "Set output port."))))
+	(error "curl handler is invalid."))))
 
 (define (curl-headers->alist headers-str . num)
   (let1 ls (remove null? (map (lambda  (h) (rfc822-read-headers (open-input-string h)))
@@ -885,7 +922,8 @@
 		       (output (curl-open-output-port curl))
 		       (header (curl-open-header-port curl)))
 		  (when verbose (curl-setopt! curl CURLOPT_VERBOSE 1))
-		  (curl-setopt! curl CURLOPT_CUSTOMREQUEST (symbol->string method))
+		  (if (equal? method 'HEAD) (curl-setopt! curl CURLOPT_NOBODY 1)
+		      (curl-setopt! curl CURLOPT_CUSTOMREQUEST (symbol->string method)))
 		  (curl-setopt! curl CURLOPT_USERAGENT (string-append "Gauche/" (gauche-version) " " (curl-version)))
 		  (curl-setopt! curl CURLOPT_HTTP_VERSION CURL_HTTP_VERSION_NONE)
 		  (when body (curl-setopt! curl CURLOPT_POSTFIELDS body))
@@ -896,7 +934,7 @@
 				       (map (lambda (h) (string-append (keyword->string (car h)) ": " (cadr h))) (slices opt 2))))
 		  (if (curl)
 		      (values
-		       (cdar (curl-getinfo curl CURLINFO_RESPONSE_CODE))
+		       (cdr (assq 'RESPONSE_CODE (curl-getinfo curl)))
 		       (curl-headers->alist (get-output-string header) -1)
 		       (get-output-string output))
 		      #f))))
