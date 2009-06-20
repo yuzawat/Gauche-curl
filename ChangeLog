@@ -1,0 +1,5 @@
+2009-06-20  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.1
+	work with libcurl 7.19.4
+	support curl easy interface only.

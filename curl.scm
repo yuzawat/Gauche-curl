@@ -1,25 +1,28 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;;
 ;;; libcurl binding for gauche
-;;;
 ;;;  libcurl: <http://curl.haxx.se/libcurl/>
-
 ;;;
+;;; Last Updated: "2009/06/20 11:43.08"
+;;;
+;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
+
+
 ;;; Example
 ;;;
-;;; (let* ((c (make <curl> :url "http://example.tld/test/" :options "-L"))
+;;; (let* ((c (make <curl> :url "http://example.tld/test/" 
+;;; 		:options '("-L" "--compressd" "--header=HOGE0: HOGE0,HOGE1: HOGE1")))
 ;;;        (output-str-port (curl-open-output-port c))
 ;;;        (header-str-port (curl-open-header-port c)))
 ;;;   (c)
 ;;;   (values  
 ;;;    (cdr (assq 'RESPONSE_CODE (curl-getinfo c)))
-;;;    (get-output-string header-str-port)
+;;;    (curl-headers->alist (get-output-string header-str-port) -1)
 ;;;    (get-output-string output-str-port)))
 
 (define-module curl
   (use gauche.mop.singleton)
   (use gauche.parseopt)
-  (use gauche.parameter)
   (use gauche.version)
   (use rfc.822)
   (use rfc.uri)
@@ -27,12 +30,8 @@
   (use util.list)
   (export 
    <curl>
-   <curl-share>
-   <cuel-multi>
+   <curl-multi>
    <curl-base>
-   <curl-multi-base>
-   <curl-share-base>
-   <curl-slist>
 
    ;; bare functions
    curl-global-init
@@ -86,7 +85,6 @@
    curl-open-input-port
    curl-open-header-port
    curl-headers->alist
-   curl-set-http-header!
 
    http-get
    http-head
@@ -414,7 +412,6 @@
    CURLSHOPT_UNLOCKFUNC
    CURLSHOPT_USERDATA
    CURLSHOPT_LAST
-
    )
   )
 (select-module curl)
@@ -426,13 +423,13 @@
 (curl-global-init CURL_GLOBAL_ALL)
 (define curl-share-enable #t)
 
-;; curl class
+;; classes
 (define-class <curl-meta> ()
   ((handler :allocation :instance
 	    :accessor handler-of)
-   (code :allocation :instance
-	 :accessor code-of
-	 :init-value #f)))
+   (rc :allocation :instance
+       :accessor rc-of
+       :init-value #f)))
 
 (define-class <curl> (<curl-meta>)
   ((url :allocation :instance
@@ -471,6 +468,10 @@
 
 (define-method object-apply ((curl <curl>))
   (curl-perform curl))
+
+
+;; condition
+(define-condition-type <curl-error> <error> #f)
 
 
 ;; utils
@@ -569,7 +570,7 @@
       (when compressed (_ curl CURLOPT_ENCODING ""))
       (if fail (_ curl CURLOPT_FAILONERROR 1) (_ curl CURLOPT_FAILONERROR 0))
       (when get (_ curl CURLOPT_HTTPGET 1))
-      (when header (_ curl CURLOPT_HTTPHEADER (list->curl_slist (string-split header #\,))))
+      (when header (_ curl CURLOPT_HTTPHEADER (string-split header #\,)))
       (if head (_ curl CURLOPT_NOBODY 1) (_ curl CURLOPT_NOBODY 0))
       (when post301 (_ curl CURLOPT_POSTREDIR CURL_REDIR_POST_301))
       (when post302 (_ curl CURLOPT_POSTREDIR CURL_REDIR_POST_302))
@@ -593,7 +594,7 @@
       (when anyauth (_ curl CURLOPT_HTTPAUTH CURLAUTH_ANY))
       ;; proxy
       (if proxy (_ curl CURLOPT_PROXY proxy) (_ curl CURLOPT_PROXY #f))
-      (when (vc "7.19.4")(if noproxy (_ curl CURLOPT_NOPROXY noproxy) (_ curl CURLOPT_NOPROXY #f)))
+      (when (vc "7.19.4") (if noproxy (_ curl CURLOPT_NOPROXY noproxy) (_ curl CURLOPT_NOPROXY #f)))
       (if proxy-user (_ curl CURLOPT_PROXYUSERPWD proxy-user) (_ curl CURLOPT_PROXYUSERPWD #f))
       (when proxy-anyauth (_ curl CURLOPT_PROXYAUTH CURLAUTH_ANY))
       (when proxy-basic (_ curl CURLOPT_PROXYAUTH CURLAUTH_BASIC))
@@ -611,19 +612,17 @@
 			(url-of curl) (if (#/\/$/ (url-of curl)) "" "/") (uri-encode-string upload-file))
 	      (_ curl CURLOPT_URL purl)
 	      (slot-set! curl 'url url)))))
-      (if data
+      (when data
 	(begin
 	  (_ curl CURLOPT_POST 1)
 	  (if (#/^@/ data) (curl-open-input-file curl data) (_ curl CURLOPT_POSTFIELDS data))
-	  (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1))
-	(_ curl CURLOPT_POST 0))
-      (if data-binary
+	  (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1)))
+      (when data-binary
 	(begin
 	  (_ curl CURLOPT_POST 1)
 	  (if (#/^@/ data) (curl-open-input-file curl data) (_ curl CURLOPT_POSTFIELDS data))
-	  (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1))
-	(_ curl CURLOPT_POST 0))
-      (if data-urlencode
+	  (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1)))
+      (when data-urlencode
 	  (begin
 	    (_ curl CURLOPT_POST 1)
 	    (cond ((#/^(.+)@(.+)$/ data-urlencode) 
@@ -648,8 +647,7 @@
 			   (uri-encode-string (m 1)))))
 		  (else  
 		   (_ curl CURLOPT_POSTFIELDS (uri-encode-string data-urlencode))))
-	    (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1))
-	(_ curl CURLOPT_POST 0))
+	    (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1)))
       (if ignore-content-length (_ curl CURLOPT_IGNORE_CONTENT_LENGTH 1) (_ curl CURLOPT_IGNORE_CONTENT_LENGTH 0))
       ;; cookie
       (if junk-session-cookies (_ curl CURLOPT_COOKIESESSION 0) (_ curl CURLOPT_COOKIESESSION 1))
@@ -757,27 +755,29 @@
 ; procedure
 (define-method curl-setopt! ((curl <curl>) opt val)
   (let1 hnd (handler-of curl)
-    (if hnd (let1 res (curl-easy-setopt hnd opt val)
-	      (slot-set! curl 'code res)
+    (if hnd 
+	(let1 res (curl-easy-setopt hnd opt (if (list? val) 
+						(list->curl-slist val) val))
+	      (slot-set! curl 'rc res)
 	      (if (= res 0) #t #f))
-	(error "curl handler is invalid."))))
+	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-perform ((curl <curl>))
   (let1 hnd (handler-of curl)
     (if hnd (let1 res (curl-easy-perform hnd)
-	      (slot-set! curl 'code res)
+	      (slot-set! curl 'rc res)
 	      (cond ((= res 0) #t)
 		    (else #f)))
-	(error "curl handler is invalid."))))
+	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-strerror ((curl <curl>))
-  (if (code-of curl) 
-      (curl-easy-strerror (code-of curl))
+  (if (rc-of curl) 
+      (curl-easy-strerror (rc-of curl))
       #f))
 
 (define-method curl-strerror ((share <curl-share>))
-  (if (code-of share) 
-      (curl-share-strerror (code-of share))
+  (if (rc-of share) 
+      (curl-share-strerror (rc-of share))
       #f))
 
 (define-method curl-getinfo ((curl <curl>))
@@ -819,7 +819,7 @@
 	  ,(if (vc "7.19.0") (cons 'APPCONNECT_TIME (_ hnd CURLINFO_APPCONNECT_TIME)) #f)
 	  ,(if (vc "7.19.1") (cons 'CERTINFO (_ hnd CURLINFO_CERTINFO)) #f)
 	  ,(if (vc "7.19.4") (cons 'CONDITION_UNMET (_ hnd CURLINFO_CONDITION_UNMET)) #f)))
-    (error "curl handler is invalid."))))
+    (error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-cleanup! ((curl <curl>))
   (let1 hnd (handler-of curl)
@@ -828,10 +828,10 @@
 	  (cond ((undefined? res)
 		 (slot-set! curl 'handler #f)
 		 (slot-set! curl 'url "")
-		 (slot-set! curl 'code #f)
+		 (slot-set! curl 'rc #f)
 		 #t)
 		(else #f)))
-	(error "curl handler is invalid."))))
+	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-reset! ((curl <curl>))
   (let1 hnd (handler-of curl)
@@ -839,38 +839,36 @@
 	(let1 res (curl-easy-reset hnd)
 	  (cond ((undefined? res)
 		 (curl-setopt! curl CURLOPT_URL (url-of curl))
-		 (slot-set! curl 'code #f)
+		 (slot-set! curl 'rc #f)
 		 #t)
 		(else #f)))
-	(error "curl handler is invalid."))))
+	(error <curl-error> :message "curl handler is invalid."))))
 
-(define-method curl-set-http-header! ((curl <curl>) ls)
-  (curl-setopt! curl CURLOPT_HTTPHEADER (list->curl-slist ls)))
 
 ; I/O
 (define-method curl-open-output-file ((curl <curl>) filename)
   (let1 hnd (handler-of curl)
     (if hnd
 	(curl-open-file hnd CURLOPT_WRITEDATA filename)
-	(error "curl handler is invalid."))))
+	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-open-input-file ((curl <curl>) filename)
   (let1 hnd (handler-of curl)
     (if hnd
 	(curl-open-file hnd CURLOPT_READDATA filename)
-	(error "curl handler is invalid."))))
+	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-open-header-file ((curl <curl>) filename)
   (let1 hnd (handler-of curl)
     (if hnd
 	(curl-open-file hnd CURLOPT_WRITEHEADER filename)
-	(error "curl handler is invalid."))))
+	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-open-error-file ((curl <curl>) filename)
   (let1 hnd (handler-of curl)
     (if hnd
 	(curl-open-file hnd CURLOPT_STDERR filename)
-	(error "curl handler is invalid."))))
+	(error <curl-error> :message "curl handler is invalid."))))
 	 
 (define-method curl-open-output-port ((curl <curl>) . out)
   (let1 hnd (handler-of curl)
@@ -879,16 +877,16 @@
 			(if (null? out)
 			    (open-output-string)
 			    (if (output-port? (car out)) (car out)
-				(error "Set output port."))))
-	(error "curl handler is invalid."))))
+				(error <curl-error> :message "Set output port."))))
+	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-open-input-port ((curl <curl>) in)
   (let1 hnd (handler-of curl)
     (if hnd
 	(curl-open-port hnd CURLOPT_READDATA
 			(if (input-port? in) in
-			    (else (error "Set input port."))))
-	(error "curl handler is invalid."))))
+			    (else (error <curl-error> :message "Set input port."))))
+	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-open-header-port ((curl <curl>) . out)
   (let1 hnd (handler-of curl)
@@ -897,8 +895,8 @@
 			(if (null? out)
 			    (open-output-string)
 			    (if (output-port? (car out)) (car out)
-				(error "Set output port."))))
-	(error "curl handler is invalid."))))
+				(error <curl-error> :message "Set output port."))))
+	(error <curl-error> :message "curl handler is invalid."))))
 
 (define (curl-headers->alist headers-str . num)
   (let1 ls (remove null? (map (lambda  (h) (rfc822-read-headers (open-input-string h)))
@@ -913,13 +911,14 @@
 ;; Common
 (define (http-common method hostname path body . opts)
   (let-keywords opts ((no-redirect :no-redirect #f)
-		      ;(sink :sink (open-output-string))
-		      ;(flusher :flusher (lambda (sink _) (get-output-string sink)))
+		      (sink :sink #f)
+		      (flusher :flusher #f)
 		      (ssl :ssl #f)
 		      (verbose :verbose #f)
 		      . opt)
 		(let* ((curl (make <curl> :url (string-append (if ssl "https://" "http://") hostname path)))
-		       (output (curl-open-output-port curl))
+		       (output (if (not sink) (curl-open-output-port curl)
+				   (curl-open-output-port curl sink)))
 		       (header (curl-open-header-port curl)))
 		  (when verbose (curl-setopt! curl CURLOPT_VERBOSE 1))
 		  (if (equal? method 'HEAD) (curl-setopt! curl CURLOPT_NOBODY 1)
@@ -929,14 +928,15 @@
 		  (when body (curl-setopt! curl CURLOPT_POSTFIELDS body))
 		  (if no-redirect (curl-setopt! curl CURLOPT_FOLLOWLOCATION 0)
 		      (curl-setopt! curl CURLOPT_FOLLOWLOCATION 1))
-		  (unless (null? opt) (curl-set-http-header! 
-				       curl 
-				       (map (lambda (h) (string-append (keyword->string (car h)) ": " (cadr h))) (slices opt 2))))
+		  (unless (null? opt) 
+		    (curl-setopt! curl CURLOPT_HTTPHEADER
+				  (map (lambda (h) (string-append (keyword->string (car h)) ": " (cadr h))) (slices opt 2))))
 		  (if (curl)
-		      (values
-		       (cdr (assq 'RESPONSE_CODE (curl-getinfo curl)))
-		       (curl-headers->alist (get-output-string header) -1)
-		       (get-output-string output))
+		      (if flusher (flusher output header)
+			  (values
+			   (number->string (cdr (assq 'RESPONSE_CODE (curl-getinfo curl))))
+			   (curl-headers->alist (get-output-string header) -1)
+			   (get-output-string output)))
 		      #f))))
 
 ;; GET

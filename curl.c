@@ -1,6 +1,10 @@
 /*-*- coding: utf-8 -*-*/
 /*
  * curl.c
+ *
+ * Last Updated: "2009/06/20 10:56.57"
+ *
+ * Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
  */
 
 #include "gauche-curl.h"
@@ -358,85 +362,98 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
 {
   ScmObj res;
   int rc;
-  if (info == CURLINFO_EFFECTIVE_URL ||
-      info == CURLINFO_CONTENT_TYPE ||
-      info == CURLINFO_PRIVATE ||
-      info == CURLINFO_FTP_ENTRY_PATH ||
-      info == CURLINFO_REDIRECT_URL ) {
-    const char *result;
-    rc = curl_easy_getinfo(hnd, info, &result);
-    if ( rc == 0 ) {
-      if (result == NULL) {
-	res = SCM_FALSE;
+  void *result;
+  switch (info)
+    {
+      /* string */
+    case CURLINFO_EFFECTIVE_URL:
+    case CURLINFO_CONTENT_TYPE:
+    case CURLINFO_PRIVATE:
+    case CURLINFO_FTP_ENTRY_PATH:
+    case CURLINFO_REDIRECT_URL:
+      (const char *)result;
+      rc = curl_easy_getinfo(hnd, info, &result);
+      if ( rc == 0 ) {
+	if (result == NULL) {
+	  res = SCM_FALSE;
+	} else {
+	  res = SCM_MAKE_STR_COPYING(result);
+	}
       } else {
-	res = SCM_MAKE_STR_COPYING(result);
-      }
-    } else {
-      res = SCM_FALSE;
-    }
-  } else if (info == CURLINFO_SSL_ENGINES ||
-	     info == CURLINFO_COOKIELIST ) {
-    struct curl_slist *result;
-    rc = curl_easy_getinfo(hnd, info, &result);
-    if ( rc == 0) {
-      if (result == NULL) {
 	res = SCM_FALSE;
-      } else {
-	res = curl_slist_to_list(result);
       }
-    } else {
-      res = SCM_FALSE;
-    }
-  } else if (info == CURLINFO_RESPONSE_CODE ||
-	     info == CURLINFO_HEADER_SIZE ||
-	     info == CURLINFO_REQUEST_SIZE ||
-	     info == CURLINFO_SSL_VERIFYRESULT ||
-	     info == CURLINFO_FILETIME ||
-	     info == CURLINFO_REDIRECT_COUNT ||
-	     info == CURLINFO_HTTP_CONNECTCODE ||
-	     info == CURLINFO_HTTPAUTH_AVAIL ||
-	     info == CURLINFO_PROXYAUTH_AVAIL ||
-	     info == CURLINFO_OS_ERRNO ||
-	     info == CURLINFO_NUM_CONNECTS ||
-	     info == CURLINFO_LASTSOCKET ) {
-    long *result;
-    rc = curl_easy_getinfo(hnd, info, &result);
-    if ( rc == 0) {
-      if (result == NULL) {
+      break;
+      /* linked list */
+    case CURLINFO_SSL_ENGINES:
+    case CURLINFO_COOKIELIST:
+      (struct curl_slist *)result;
+      rc = curl_easy_getinfo(hnd, info, &result);
+      if ( rc == 0) {
+	if (result == NULL) {
+	  res = SCM_FALSE;
+	} else {
+	  res = curl_slist_to_list(result);
+	}
+      } else {
 	res = SCM_FALSE;
-      } else {
-	res = SCM_MAKE_INT(result);
       }
-    } else {
-      res = SCM_FALSE;
-    }
-  } else if (info == CURLINFO_TOTAL_TIME ||
-	     info == CURLINFO_NAMELOOKUP_TIME ||
-	     info == CURLINFO_CONNECT_TIME ||
-	     info == CURLINFO_PRETRANSFER_TIME ||
-	     info == CURLINFO_SIZE_UPLOAD ||
-	     info == CURLINFO_SIZE_DOWNLOAD ||
-	     info == CURLINFO_SPEED_DOWNLOAD ||
-	     info == CURLINFO_SPEED_UPLOAD ||
-	     info == CURLINFO_CONTENT_LENGTH_DOWNLOAD ||
-	     info == CURLINFO_CONTENT_LENGTH_UPLOAD ||
-	     info == CURLINFO_STARTTRANSFER_TIME ||
-	     info == CURLINFO_REDIRECT_TIME ||
-	     info == CURLINFO_APPCONNECT_TIME ) {
-    double *result;
-    rc = curl_easy_getinfo(hnd, info, &result);
-    if ( rc == 0) {
-      if (result == NULL) {
+      break;
+      /* long */
+    case CURLINFO_RESPONSE_CODE:
+    case CURLINFO_HEADER_SIZE:
+    case CURLINFO_REQUEST_SIZE:
+    case CURLINFO_SSL_VERIFYRESULT:
+    case CURLINFO_FILETIME:
+    case CURLINFO_REDIRECT_COUNT:
+    case CURLINFO_HTTP_CONNECTCODE:
+    case CURLINFO_HTTPAUTH_AVAIL:
+    case CURLINFO_PROXYAUTH_AVAIL:
+    case CURLINFO_OS_ERRNO:
+    case CURLINFO_NUM_CONNECTS:
+    case CURLINFO_LASTSOCKET:
+      (long *)result;
+      rc = curl_easy_getinfo(hnd, info, &result);
+      if ( rc == 0) {
+	if (result == NULL) {
+	  res = SCM_FALSE;
+	} else {
+	  res = SCM_MAKE_INT(result);
+	}
+      } else {
 	res = SCM_FALSE;
-      } else {
-	res = SCM_MAKE_INT(result);
       }
-    } else {
+      break;
+      /* double */
+    case CURLINFO_TOTAL_TIME:
+    case CURLINFO_NAMELOOKUP_TIME:
+    case CURLINFO_CONNECT_TIME:
+    case CURLINFO_PRETRANSFER_TIME:
+    case CURLINFO_SIZE_UPLOAD:
+    case CURLINFO_SIZE_DOWNLOAD:
+    case CURLINFO_SPEED_DOWNLOAD:
+    case CURLINFO_SPEED_UPLOAD:
+    case CURLINFO_CONTENT_LENGTH_DOWNLOAD:
+    case CURLINFO_CONTENT_LENGTH_UPLOAD:
+    case CURLINFO_STARTTRANSFER_TIME:
+    case CURLINFO_REDIRECT_TIME:
+    case CURLINFO_APPCONNECT_TIME:
+      (double *)result;
+      rc = curl_easy_getinfo(hnd, info, &result);
+      if ( rc == 0) {
+	if (result == NULL) {
+	  res = SCM_FALSE;
+	} else {
+	  res = SCM_MAKE_INT(result);
+	}
+      } else {
+	res = SCM_FALSE;
+      }
+      break;
+      /* else */
+    default:
       res = SCM_FALSE;
+      break;
     }
-  } else {
-    res = SCM_FALSE;
-  }
   return res;
 }
 

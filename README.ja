@@ -1,0 +1,336 @@
+Abstract:
+ libcurl <http://curl.haxx.se/libcurl/> のバインディングです。
+ 各種URLに対するクライアントサイドからのアクセスを実現します。
+ http, https, ftp 等をサポートします（サポート対象はリンクされる libcurl によります）。
+ libcurlは Daniel Stenberg氏の著作物です。<http://curl.haxx.se/docs/copyright.html>
+ 
+Author: yuzawat <suzdalenator ＠ gmail.coml>
+
+Version: 0.1 2009/06/20
+======================================================================
+
+Module: curl
+ このモジュールは、libcurl - the multiprotocol file transfer library へのバインディングを提供します。
+ libcurlの機能を利用して、URLで表現される各種ネットワークリソースを取得し、取得したデータをポートにマッピングすることができます。
+ 
+例1:
+(let* ((c (make <curl> :url "http://www.example.tld/"))
+       (op (curl-open-output-port c))
+       (hp (curl-open-header-port c)))
+    (curl-setopt! c CURLOPT_VERBOSE 1)
+    (curl-setopt! c CURLOPT_FOLLOWLOCATION 1)
+    (c)
+    (display (get-output-string op)))
+
+例2:
+((make <curl> :url "http://www.example.tld/" :options "-v -L"))
+
+
+----
+上位インターフェイス
+
+Class: <curl>
+ libcurlのハンドラーです。このインスタンス単位で、URLやその他の動作オプションを設定し、結果を受け取ります。
+ 取得した結果は、デフォルトでは標準出力に出力します。
+ 入出力を任意のファイル、もしくはポートに向けたい場合には、curl-open-...のメソッドを使用して下さい。
+
+Instance Variable of <curl>: url
+ 接続先のURL
+ 現バージョンでは、curl(1)のワイルドカードURLをサポートしていません。
+
+Instance Variable of <curl>: options
+ ハンドラーへのオプション設定の簡易インターフェイスです。curl(1) のコマンドラインオプションを指定できます。
+ コマンドラインオプションを文字列のリストの形で設定すると、ハンドラーに反映されます（スペースで区切った文字列でも大丈夫ですが、複雑な指定だと上手くパーズできないのでリストにしておいたほうが無難です）。
+ オプションの書式や意味は、curl(1)のバージョン 7.19.4に 基本的に準拠しています。
+ ただし、コマンドラインパーザの制限で、curlと全て同じ動作にはなっていません。例えばcurl(1)には同じオプションを複数渡すと、値も複数受け取る動作があるのですが、それには従っていません（-H,--headerは、複数指定することでHTTPのヘッダをその数だけ追加できるのですが、それと同じ動作はできません。-H,--headerについては、カンマ(,)で連結した文字列を引数とすることで複数指定に対応しています）。
+ 上記の制限があるので、options での設定がむずかしいものは、curl-setopt!を直接使用して下さい。
+
+Instance Variable of <curl>: rc
+ ハンドラーに対して、実行した直前の操作の結果の返値が格納されています。
+
+Condition: <curl-error>
+ curlモジュールのコンディションです。<error>を継承しています。
+
+Method: curl-setopt! (c <curl>) CURLOPT_... val
+ ハンドラーに対して設定を行ないます。
+ CURLOPT_...はlibcurlで定義されている定数です。例えばURLの指定はCURLOPT_URL、タイムアウトの秒数指定はCURLOPT_TIMEOUTです。詳細は libcurlの関数、curl_easy_setopt のドキュメントを参照して下さい。<http://curl.haxx.se/libcurl/c/curl_easy_setopt.html>
+ valはCURLOPT_...に応じた値を指定します。文字列か、文字列のリストか、数字か、#f のいずれかになります。
+ 注意: Funtion Pointerを渡すためのインターフェイスは設けていません。struct curl_slist を渡すもの（CURLOPT_HTTPHEADERなど）に対しては文字列のリストを渡して下さい。
+ 正常終了した場合、#t を返します。
+
+Method: curl-perform (c <curl>)
+ ハンドラーを実行します（URLへの接続を行います）。
+ 正常終了した場合、#t を返します。
+
+Method: curl-getinfo (c <curl>)
+ 実行後のハンドラーの情報を取得します。連想リストを返します。
+ 返却される値については、libcurlのドキュメントを参照して下さい。<http://curl.haxx.se/libcurl/c/curl_easy_getinfo.html>
+
+Method: curl-cleanup! (c <curl>)
+ ハンドラーのクリンナップをします。クリンナップしたハンドラーは使用できなくなります。
+ 正常終了した場合、#t を返します。
+
+Method: curl-reset! (c <curl>)
+ ハンドラーをリセットします。
+ 正常終了した場合、#t を返します。
+
+Method: curl-strerror (c <curl>)
+ ハンドラーの最後の状態を示す文字列を返します。
+
+Method: curl-open-output-file (c <curl>) filename
+Method: curl-open-input-file (c <curl>) filename
+Method: curl-open-header-file (c <curl>) filename
+Method: curl-open-error-file (c <curl>) filename
+ 取得したデータ・アップロードするデータ・ヘッダー情報・デバッグ情報を、指定した文字列のファイルと結び付けます。
+ #undefを返します。
+
+Method: curl-open-output-port (c <curl>) &optional outport
+Method: curl-open-input-port (c <curl>) inport
+Method: curl-open-header-port (c <curl>) &optional outport
+ 取得したデータ・アップロードするデータ・ヘッダー情報を、それぞれポートと結び付けます。ポートを返します。
+ curl-open-output-portとcurl-open-header-portでは、オプションのポートを省略した場合には、文字列出力ポートを返します。
+
+Function: curl-headers->alist string &optional num
+ ヘッダ情報の文字列をリストに変換します。libcurlではHTTP接続でリダイレクトされた場合、リダイレクトごとにヘッダが記録されるので、出力結果は連想リストのリストになります。オプションで数字を指定すると、その順位の連想リストが返されます。-1を指定すると最後の連想リストを返します。
+
+Generic application: c
+ (curl-perform (c curl))と同意です。 
+
+Function: curl-version
+ リンクされているlibcurlのバージョン情報の文字列を返します。
+
+Function: curl-version-info
+ リンクされているlibcurlのバージョン情報やサポートしている機能、プロトコルなどの連想リストを返します。
+
+Function: http-get server request-uri &keyword sink flusher no-redirect ssl...
+Function: http-head server request-uri &keyword no-redirect ssl...
+Function: http-post server request-uri body &keyword sink flusher no-redirect ssl...
+Function: http-put server request-uri body &keyword sink flusher no-redirect ssl...
+Function: http-delete server request-uri &keyword sink flusher no-redirect ssl...
+
+ モジュールrfc.httpで定義されている同名の Functionと同じインターフェイスを実現するためのラッパーです。
+ キーワード引数 ssl が追加されています。これが #t であれば（そしてlibcurlがSSLをサポートしていれば）SSL接続を試みます。
+ http-put, http-deleteは、同様のインターフェイスで、HTTP/1.1の PUTリクエストと DELETEリクエストを実行します。
+
+
+----
+下位インターフェース
+
+Builtin Class: <curl-base>
+ libcurlのeasy interfaceのハンドラー
+
+Builtin Class: <curl-multi-base>
+ libcurlのmulti interfaceのハンドラー
+
+Builtin Class: <curl-share-base>
+ libcurlのshare interfaceのハンドラー
+
+Builtin Class: <curl-slist>
+ libcurl内のデータ構造 struct curl_slist です。実体は一般的な単方向リストです。
+
+Constant: CURLE_...
+ libcurlのエラーコード
+
+Constant: CURLOPT_...
+ libcurlのオプションコード
+
+Constant: CURLINFO_...
+ libcurlの情報コード
+
+Function: curl-global-init flag
+ libcurlの大域変数の初期化を行います。正常終了した場合、0を返します。
+
+Function: curl-global-cleanup
+ libcurlの大域変数のクリンナップを行います。正常終了した場合、#t を返します。
+
+Function: curl-easy-init
+ easy interface のハンドラーを生成します。(hnd <curl-base>) を返します。
+
+Function: curl-easy-cleanup hnd
+ easy interface のハンドラーをクリンナップします。正常終了した場合、0を返します。
+
+Function: curl-easy-setopt hnd CURLOPT_... val
+ easy interface のハンドラーに、オプション設定を行います。正常終了した場合、0を返します。
+
+Function: curl-easy-perform hnd
+ easy interface のハンドラーを実行します（URLへの接続を行います）。正常終了した場合、0を返します。
+
+Function: curl-easy-reset hnd
+ easy interface のハンドラーをリセットします。正常終了した場合、#undef を返します。
+
+Function: curl-easy-duphandle hnd
+ easy interface のハンドラーを複製します。新しい(hnd <curl-base>) を返します。
+
+Function: curl-easy-getinfo hnd CURLINFO_...
+ 実行後の easy interface のハンドラーの情報を取得します。
+ 情報内容は、CURLINFO_...で指定し、それに応じて、文字列、数字、文字列リスト、#f のいずれかを返します。
+
+Function: curl-easy-strerror errono
+ libcurlの返したFunctionの終了コードを、文章として意味のあるメッセージに変換した文字列を返します。
+
+Function: curl-easy-escape hnd string length
+ 指定された長さの文字列を、URLエンコードします。
+ 
+Function: curl-easy-unescape hnd string length outlength
+ 指定された長さの文字列を、URLデコードします。
+
+Function: curl-getenv string
+ 指定された環境変数を取得します。
+
+Function: curl-multi-init
+ multi interface のハンドラーを生成します。(mhnd <curl-multi-base>) を返します。
+
+Function: curl-multi-cleanup mhnd
+ multi interface のハンドラーをクリンナップします。
+
+Function: curl-multi-add-handle mhnd hnd
+ multi interface のハンドラーに、easy interfaceハンドラーを追加します。
+ 
+Function: curl-multi-remove-handle mhad hand
+ multi interface のハンドラーに、easy interfaceハンドラーを追加します。
+
+Function: curl-share-init
+ shared interface のハンドラーを生成します。(shnd <curl-share-base>) を返します。
+
+Function: curl-share-setopt shnd CURLSHOPT_... val
+ share interface のハンドラーに、オプション設定を行います。正常終了した場合、0を返します。
+
+Function: curl-share-strerror
+ libcurlの返したFunctionの終了コードを、文章として意味のあるメッセージに変換した文字列を返します。
+
+Method: curl-open-file hnd CURLOPT_... filename
+ easy interface のハンドラーに、CURLOPT_...で指定された種別のデータを、filenameで指定されたファイルハンドラーに結び付けます。
+
+Method: curl-open-port hnd CURLOPT_... port
+ easy interface のハンドラーに、CURLOPT_...で指定された種別のデータを、portで指定されたポートに結び付けます。
+
+Function: list->curl-slist list
+Function: curl-slist->list curl_slist
+ Schemeの文字列のリストと、<curl-slist>を相互に変換します。
+
+======================================================================
+Todo
+- 未テストのプロトコルの動作確認
+- データアップロード関連の十分なテスト
+- 未実装部分たくさん
+- test.scmをもう少しましに
+
+制限事項
+- multi interface（複数のハンドラーをまとめて操作する）が未実装です。
+- プログレスメータ・プログレスバーは未実装です（実装するか未定）
+- curl独自のURLのワイルドカードをサポートしていません（実装するか未定）。
+- HTTP POST FORMデータ生成の機能が未実装です。
+- 以下のlibcurl関数のバインディングは未実装、もしくは利用しやすいインターフェイスを作っていません。
+ curl_easy_pause 
+ curl_easy_recv 
+ curl_easy_send 
+ curl_formadd 
+ curl_formfree 
+ curl_formget 
+ curl_free 
+ curl_getdate 
+ curl_global_init_mem 
+ curl_multi_add_handle 
+ curl_multi_assign 
+ curl_multi_cleanup 
+ curl_multi_fdset 
+ curl_multi_info_read 
+ curl_multi_init 
+ curl_multi_perform 
+ curl_multi_remove_handle 
+ curl_multi_setopt 
+ curl_multi_socket 
+ curl_multi_strerror 
+ curl_multi_timeout 
+
+- curl(1)互換の簡易インターフェース(:options)で、以下のものが未実装です。
+ -#|--progress-bar
+ --buffer
+ --cacert
+ --capath
+ --cert-type
+ --ciphers
+ --create-dirs
+ --crlf
+ --disable-eprt
+ --disable-epsv
+ --egd-file
+ --engine
+ --environment
+ --eprt
+ --epsv
+ --form-string
+ --ftp-account
+ --ftp-alternative-to-user
+ --ftp-create-dirs
+ --ftp-method
+ --ftp-pasv
+ --ftp-skip-pasv-ip
+ --ftp-ssl
+ --ftp-ssl-ccc
+ --ftp-ssl-ccc-mode
+ --ftp-ssl-control
+ --ftp-ssl-reqd
+ --hostpubmd5
+ --keepalive
+ --key
+ --key-type
+ --krb
+ --limit-rate
+ --local-port
+ --netrc-optional
+ --no-eprt
+ --no-epsv
+ --no-keepalive
+ --no-sessionid
+ --pass
+ --pubkey
+ --random-file
+ --raw
+ --remote-name-all
+ --retry
+ --retry-delay
+ --retry-max-time
+ --sessionid
+ --socks4
+ --socks4a
+ --socks5
+ --socks5-gssapi-nec
+ --socks5-gssapi-service
+ --socks5-hostname
+ --trace
+ --trace-ascii
+ --trace-time
+ -0|--http1.0
+ -1|--tlsv1
+ -2|--sslv2
+ -3|--sslv3
+ -4|--ipv4
+ -6|--ipv6
+ -B|--use-ascii
+ -C|--continue-at
+ -E|--cert
+ -F|--form
+ -K|--config
+ -N|--no-buffer
+ -P|--ftp-port
+ -Q|--quote
+ -S|--show-error
+ -Y|--speed-limit
+ -a|--append
+ -g|--globoff
+ -k|--insecure
+ -l|--list-only
+ -n|--netrc
+ -p|--proxytunnel
+ -q
+ -r|--range
+ -s|--silent
+ -t|--telnet-option
+ -w|--write-out
+ -y|--speed-time
+ -z|--time-cond
+ --keepalive-time
+
+
+以上
