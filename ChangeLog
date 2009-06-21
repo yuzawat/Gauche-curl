@@ -1,3 +1,10 @@
+2009-06-22  yuzawat  <suzdalenator@gmail.com>
+
+	* curl.c 
+	read_from_port(): fix but not all. 
+	* curl.scm
+	%easy-options: --data-binary
+
 2009-06-20  yuzawat  <suzdalenator@gmail.com>
 
 	* release 0.1

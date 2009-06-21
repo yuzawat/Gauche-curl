@@ -2,7 +2,7 @@
 /*
  * curl.c
  *
- * Last Updated: "2009/06/20 10:56.57"
+ * Last Updated: "2009/06/22 00:15.09"
  *
  * Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
  */
@@ -201,14 +201,12 @@ size_t read_from_port(void *buffer, size_t sz, size_t nmemb, void *scm_port)
   iport = scm_port;
   wc = 0;
   isize = sz * nmemb;
-  while (wc < isize) {
-    c = Scm_Getz(buffer, sz, SCM_PORT(iport));
-    wc = wc + c;
-  }
+
+  wc = Scm_Getz(buffer, isize, SCM_PORT(iport));
 
   if ((size_t)wc == isize) {
     return isize;
-  } else { 
+  } else {
     return 0;
   }
 }

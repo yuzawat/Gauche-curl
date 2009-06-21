@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2009/06/20 11:43.08"
+;;; Last Updated: "2009/06/21 20:48.30"
 ;;;
 ;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
 
@@ -620,7 +620,7 @@
       (when data-binary
 	(begin
 	  (_ curl CURLOPT_POST 1)
-	  (if (#/^@/ data) (curl-open-input-file curl data) (_ curl CURLOPT_POSTFIELDS data))
+	  (if (#/^@/ data-binary) (curl-open-input-file curl data-binary) (_ curl CURLOPT_POSTFIELDS data-binary))
 	  (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1)))
       (when data-urlencode
 	  (begin
@@ -855,7 +855,10 @@
 (define-method curl-open-input-file ((curl <curl>) filename)
   (let1 hnd (handler-of curl)
     (if hnd
-	(curl-open-file hnd CURLOPT_READDATA filename)
+	(begin 
+	  (curl-open-file hnd CURLOPT_READDATA filename)
+	  (curl-setopt! curl CURLOPT_POSTFIELDS #f)
+	  (curl-setopt! curl CURLOPT_POSTFIELDSIZE_LARGE -1))
 	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-open-header-file ((curl <curl>) filename)
@@ -883,9 +886,12 @@
 (define-method curl-open-input-port ((curl <curl>) in)
   (let1 hnd (handler-of curl)
     (if hnd
-	(curl-open-port hnd CURLOPT_READDATA
-			(if (input-port? in) in
-			    (else (error <curl-error> :message "Set input port."))))
+	(begin
+	  (curl-open-port hnd CURLOPT_READDATA
+			  (if (input-port? in) in
+			      (else (error <curl-error> :message "Set input port."))))
+	  (curl-setopt! curl CURLOPT_POSTFIELDS #f)
+	  (curl-setopt! curl CURLOPT_POSTFIELDSIZE_LARGE -1))
 	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-open-header-port ((curl <curl>) . out)
