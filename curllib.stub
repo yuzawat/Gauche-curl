@@ -1,7 +1,7 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;; curllib.stub
 ;;; 
-;;; Last Updated: "2009/06/20 13:01.46"
+;;; Last Updated: "2009/07/06 23:58.11"
 ;;;
 ;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
 
@@ -162,6 +162,12 @@
 (define-cproc curl-getenv (str::<const-cstring>)
   (body <const-cstring>
 	"SCM_RESULT = curl_getenv(str);"))
+
+; Convert a date string to number of seconds since January 1, 1970
+(define-cproc curl-getdate (str::<const-cstring>)
+  (body <int>
+	"time_t now = time(NULL);"
+	"SCM_RESULT = curl_getdate(str, &now);"))
 
 ; sends raw data over an "easy" connection
 (define-cproc curl-easy-send (hnd::<curl-base> str::<const-cstring> length::<int> size::<int>)
@@ -703,6 +709,83 @@
 (define-enum CURL_HTTP_VERSION_NONE)
 (define-enum CURL_HTTP_VERSION_1_0)
 (define-enum CURL_HTTP_VERSION_1_1)
+
+;; cURL proxy type
+;; (>= 7.10.0)
+(if "LIBCURL_VERSION_NUM >= 0x070a00"
+    (begin
+      (define-enum CURLPROXY_HTTP)
+      (define-enum CURLPROXY_SOCKS5)))
+;; (>= 7.19.4)
+(if "LIBCURL_VERSION_NUM >= 0x071304"
+    (define-enum CURLPROXY_HTTP_1_0))
+;; (>= 7.15.2)
+(if "LIBCURL_VERSION_NUM >= 0x070f02"
+    (define-enum CURLPROXY_SOCKS4))
+;; (>= 7.18.0)
+(if "LIBCURL_VERSION_NUM >= 0x071200"
+    (begin 
+      (define-enum CURLPROXY_SOCKS4A)
+      (define-enum CURLPROXY_SOCKS5_HOSTNAME)))
+
+;; CURLOPT_IPRESOLVE option
+(define-enum CURL_IPRESOLVE_WHATEVER)
+(define-enum CURL_IPRESOLVE_V4)
+(define-enum CURL_IPRESOLVE_V6)
+
+;; SSH auth type
+(define-enum CURLSSH_AUTH_PUBLICKEY)
+(define-enum CURLSSH_AUTH_PASSWORD)
+(define-enum CURLSSH_AUTH_HOST)
+(define-enum CURLSSH_AUTH_KEYBOARD)
+(define-enum CURLSSH_AUTH_ANY)
+(define-enum CURLSSH_AUTH_DEFAULT)
+
+;; curl ftp method
+;; (>= 7.15.1)
+(if "LIBCURL_VERSION_NUM >= 0x070f01"
+    (begin 
+      (define-enum CURLFTPMETHOD_MULTICWD)
+      (define-enum CURLFTPMETHOD_NOCWD)
+      (define-enum CURLFTPMETHOD_SINGLECWD)))
+
+;; CURLOPT_USE_SSL option
+; (>= 7.11.0)
+(if "LIBCURL_VERSION_NUM >= 0x070b00"
+    (begin 
+      (define-enum CURLUSESSL_NONE)
+      (define-enum CURLUSESSL_TRY)
+      (define-enum CURLUSESSL_CONTROL)
+      (define-enum CURLUSESSL_ALL)))
+
+;;  CURLOPT_FTPSSLAUTH option 
+; (>= 7.12.2)
+(if "LIBCURL_VERSION_NUM >= 0x070c02"
+    (begin 
+      (define-enum CURLFTPAUTH_DEFAULT)
+      (define-enum CURLFTPAUTH_SSL)
+      (define-enum CURLFTPAUTH_TLS)))
+
+;; CURLOPT_FTP_SSL_CCC option
+;; (>= 7.16.1)
+(if "LIBCURL_VERSION_NUM >= 0x071001"
+    (begin
+      (define-enum CURLFTPSSL_CCC_NONE)
+      (define-enum CURLFTPSSL_CCC_PASSIVE)
+      (define-enum CURLFTPSSL_CCC_ACTIVE)))
+
+;; SSL version
+(define-enum CURL_SSLVERSION_DEFAULT)
+(define-enum CURL_SSLVERSION_TLSv1)
+(define-enum CURL_SSLVERSION_SSLv2)
+(define-enum CURL_SSLVERSION_SSLv3)
+
+;; time condition value
+(define-enum CURL_TIMECOND_NONE)
+(define-enum CURL_TIMECOND_IFMODSINCE)
+(define-enum CURL_TIMECOND_IFUNMODSINCE)
+(define-enum CURL_TIMECOND_LASTMOD)
+
 
 ;; Local variables:
 ;; mode: scheme

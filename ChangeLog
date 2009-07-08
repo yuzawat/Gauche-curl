@@ -1,3 +1,17 @@
+2009-07-08  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.1.1
+	* curl.c 
+	read_from_port(): fixed
+	curl_open_port(): support standard input port
+	* curl.scm
+	<curl>: add slot http-headers. 
+	        Cause HTTP upload needs "Transfer-Encoding: chunked" header, when upload size is unknown.
+	curl-setopts!: set value to http-headers slot
+	curl-prtform: add call curl-setopt! for http-headers
+	%options: add curl(1) interface options.
+	* curllib.stub: add constant of libcurl.
+
 2009-06-22  yuzawat  <suzdalenator@gmail.com>
 
 	* curl.c 

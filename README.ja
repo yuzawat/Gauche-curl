@@ -6,12 +6,15 @@ Abstract:
  
 Author: yuzawat <suzdalenator ＠ gmail.coml>
 
-Version: 0.1 2009/06/20
+Version: 0.1.1 2009/07/08
 ======================================================================
 
 Module: curl
  このモジュールは、libcurl - the multiprotocol file transfer library へのバインディングを提供します。
- libcurlの機能を利用して、URLで表現される各種ネットワークリソースを取得し、取得したデータをポートにマッピングすることができます。
+ libcurlの機能を利用して、URLで表現される各種ネットワークリソースを取得やアップロードが可能になります。
+ データのインプット・アウトプットを、ポートにマッピングすることができます。
+ libcurlへ設定パラメータを渡すために、curl(1)のコマンドラインオプションを模した簡易インターフェイスを用意しています。
+ 
  
 例1:
 (let* ((c (make <curl> :url "http://www.example.tld/"))
@@ -44,6 +47,9 @@ Instance Variable of <curl>: options
  オプションの書式や意味は、curl(1)のバージョン 7.19.4に 基本的に準拠しています。
  ただし、コマンドラインパーザの制限で、curlと全て同じ動作にはなっていません。例えばcurl(1)には同じオプションを複数渡すと、値も複数受け取る動作があるのですが、それには従っていません（-H,--headerは、複数指定することでHTTPのヘッダをその数だけ追加できるのですが、それと同じ動作はできません。-H,--headerについては、カンマ(,)で連結した文字列を引数とすることで複数指定に対応しています）。
  上記の制限があるので、options での設定がむずかしいものは、curl-setopt!を直接使用して下さい。
+
+Instance Variable of <curl>: http-headers
+ HTTPのヘッダーが、文字列のリストで入っています。options経由("--header=hoge:hoge")でも、直接、curl-setopt!での指定(curl-setopt! curl CURLOPT_HTTPHEADER '("hoge:hoge"))を行っても、ここに反映されます。
 
 Instance Variable of <curl>: rc
  ハンドラーに対して、実行した直前の操作の結果の返値が格納されています。
@@ -177,6 +183,9 @@ Function: curl-easy-unescape hnd string length outlength
 Function: curl-getenv string
  指定された環境変数を取得します。
 
+Function: curl-getdate string
+ 指定された文字列で表現された日付を、POSIX time にして返します。
+
 Function: curl-multi-init
  multi interface のハンドラーを生成します。(mhnd <curl-multi-base>) を返します。
 
@@ -228,7 +237,6 @@ Todo
  curl_formfree 
  curl_formget 
  curl_free 
- curl_getdate 
  curl_global_init_mem 
  curl_multi_add_handle 
  curl_multi_assign 
@@ -243,90 +251,37 @@ Todo
  curl_multi_strerror 
  curl_multi_timeout 
 
+- curl(1)互換の簡易インターフェース(:options)で、以下のものは同じ文字列での指定ができませんので提示されているように書き換えをお願いします。
+ --http1.0 => --http1_0
+ --proxy1.0 => --proxy1_0
+
 - curl(1)互換の簡易インターフェース(:options)で、以下のものが未実装です。
- -#|--progress-bar
  --buffer
- --cacert
- --capath
- --cert-type
- --ciphers
+ -#|--progress-bar
  --create-dirs
- --crlf
- --disable-eprt
- --disable-epsv
- --egd-file
- --engine
  --environment
- --eprt
- --epsv
  --form-string
- --ftp-account
- --ftp-alternative-to-user
- --ftp-create-dirs
- --ftp-method
- --ftp-pasv
- --ftp-skip-pasv-ip
- --ftp-ssl
- --ftp-ssl-ccc
- --ftp-ssl-ccc-mode
- --ftp-ssl-control
- --ftp-ssl-reqd
- --hostpubmd5
  --keepalive
- --key
- --key-type
- --krb
- --limit-rate
- --local-port
+ --limit-rate 
  --netrc-optional
- --no-eprt
- --no-epsv
  --no-keepalive
- --no-sessionid
- --pass
- --pubkey
- --random-file
- --raw
  --remote-name-all
  --retry
  --retry-delay
  --retry-max-time
- --sessionid
- --socks4
- --socks4a
- --socks5
- --socks5-gssapi-nec
- --socks5-gssapi-service
- --socks5-hostname
  --trace
  --trace-ascii
  --trace-time
- -0|--http1.0
- -1|--tlsv1
- -2|--sslv2
- -3|--sslv3
- -4|--ipv4
- -6|--ipv6
- -B|--use-ascii
  -C|--continue-at
- -E|--cert
  -F|--form
  -K|--config
  -N|--no-buffer
- -P|--ftp-port
- -Q|--quote
  -S|--show-error
  -Y|--speed-limit
- -a|--append
  -g|--globoff
- -k|--insecure
- -l|--list-only
  -n|--netrc
- -p|--proxytunnel
  -q
- -r|--range
  -s|--silent
- -t|--telnet-option
  -w|--write-out
  -y|--speed-time
  -z|--time-cond

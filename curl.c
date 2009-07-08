@@ -2,7 +2,7 @@
 /*
  * curl.c
  *
- * Last Updated: "2009/06/22 00:15.09"
+ * Last Updated: "2009/07/05 13:37.35"
  *
  * Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
  */
@@ -56,7 +56,7 @@ ScmObj curl_open_file(CURL *hnd, int type, const char* fn)
   int fd, rc;
   mode_t old_mode = umask(S_IRWXO);
    switch (type)
-    {
+     {
     case CURLOPT_WRITEDATA:
       fd = open(fn, O_WRONLY|O_CREAT, S_IRUSR|S_IWUSR|S_IRGRP);
       fp = fdopen(fd, "w");
@@ -66,7 +66,7 @@ ScmObj curl_open_file(CURL *hnd, int type, const char* fn)
       }
       rc = curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, NULL);
       if (rc != 0) {
-	Scm_Error("failed to setopt\n");
+	Scm_Error("failed to setopt CURLOPT_WRITEFUNCTION\n");
       }
       break;
     case CURLOPT_WRITEHEADER:
@@ -78,7 +78,7 @@ ScmObj curl_open_file(CURL *hnd, int type, const char* fn)
       }
       rc = curl_easy_setopt(hnd, CURLOPT_HEADERFUNCTION, NULL);
       if (rc != 0) {
-	Scm_Error("failed to setopt\n");
+	Scm_Error("failed to setopt CURLOPT_HEADERFUNCTION\n");
       }
       break;
     case CURLOPT_STDERR:
@@ -98,7 +98,7 @@ ScmObj curl_open_file(CURL *hnd, int type, const char* fn)
       }
       rc = curl_easy_setopt(hnd, CURLOPT_READFUNCTION, NULL);
       if (rc != 0) {
-	Scm_Error("failed to setopt\n");
+	Scm_Error("failed to setopt CURLOPT_READFUNCTION\n");
       }
       break;
     default:
@@ -110,42 +110,71 @@ ScmObj curl_open_file(CURL *hnd, int type, const char* fn)
    return SCM_UNDEFINED;
 }
 
-
 /* write to port, read from port */
 ScmObj curl_open_port(CURL* hnd, int type, ScmObj *scm_port)
 {
   ScmObj *port = scm_port;
-  int rc;
+  int rc, input_size;
+  FILE* fp;
   switch (type)
     {
     case CURLOPT_WRITEDATA:
       rc = curl_easy_setopt(hnd, CURLOPT_WRITEDATA, port);
       if (rc != 0) {
-	Scm_Error("failed to setopt\n");
+	Scm_Error("failed to setopt CURLOPT_WRITEDATA\n");
       }
       rc = curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, &write_to_port);
       if (rc != 0) {
-	Scm_Error("failed to setopt\n");
+	Scm_Error("failed to setopt CURLOPT_WRITEFUNCTION\n");
       }
       break;
     case CURLOPT_WRITEHEADER:
       rc = curl_easy_setopt(hnd, CURLOPT_WRITEHEADER, port);
       if (rc != 0) {
-	Scm_Error("failed to setopt\n");
+	Scm_Error("failed to setopt CURLOPT_WRITEHEADER\n");
       }
       rc = curl_easy_setopt(hnd, CURLOPT_HEADERFUNCTION, &write_to_port);
       if (rc != 0) {
-	Scm_Error("failed to setopt\n");
+	Scm_Error("failed to setopt CURLOPT_HEADERFUNCTION\n");
       }
       break;
     case CURLOPT_READDATA:
-      rc = curl_easy_setopt(hnd, CURLOPT_READDATA, port);
-      if (rc != 0) {
-	Scm_Error("failed to setopt\n");
-      }
-      rc = curl_easy_setopt(hnd, CURLOPT_READFUNCTION, &read_from_port);
-      if (rc != 0) {
-	Scm_Error("failed to setopt\n");
+      /* stdin port*/
+      if (SCM_PORT(port) == SCM_PORT(Scm_Stdin())) {
+	rc = curl_easy_setopt(hnd, CURLOPT_READDATA, stdin);
+	if (rc != 0) {
+	  Scm_Error("failed to setopt CURLOPT_READDATA\n");
+	}
+	rc = curl_easy_setopt(hnd, CURLOPT_READFUNCTION, NULL);
+	if (rc != 0) {
+	  Scm_Error("failed to setopt CURLOPT_READFUNCTION\n");
+	}
+	/* And need header, "Transfer-Encoding: chunked" */
+      } else {
+	/* other port */
+	rc = curl_easy_setopt(hnd, CURLOPT_READDATA, port);
+	if (rc != 0) {
+	  Scm_Error("failed to setopt CURLOPT_READDATA\n");
+	}
+	if (SCM_PORT_TYPE(port) == SCM_PORT_FILE || 
+	    SCM_PORT_TYPE(port) == SCM_PORT_ISTR) {
+	  input_size = SCM_INT_VALUE(Scm_PortSeek(SCM_PORT(port), SCM_MAKE_INT(0), SEEK_END));
+	  if (input_size) {
+	    Scm_PortSeek(SCM_PORT(port), SCM_MAKE_INT(0), SEEK_SET);
+	    if (CURL_SIZEOF_CURL_OFF_T > 4) {
+	      rc = curl_easy_setopt(hnd, CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)input_size);
+	    } else {
+	      rc = curl_easy_setopt(hnd, CURLOPT_POSTFIELDSIZE, input_size);
+	    }
+	    if (rc != 0) {
+	      Scm_Error("failed to setopt CURLOPT_POSTFIELDSIZE\n");
+	    }
+	  }
+	}
+	rc = curl_easy_setopt(hnd, CURLOPT_READFUNCTION, &read_from_port);
+	if (rc != 0) {
+	  Scm_Error("failed to setopt CURLOPT_READFUNCTION\n");
+	}
       }
       break;
     defalut:
@@ -197,18 +226,25 @@ size_t read_from_port(void *buffer, size_t sz, size_t nmemb, void *scm_port)
 {
   ScmObj *iport;
   size_t isize;
-  int wc, c;
+  int c, nread = 0;
+  char *data;
+
   iport = scm_port;
-  wc = 0;
   isize = sz * nmemb;
 
-  wc = Scm_Getz(buffer, isize, SCM_PORT(iport));
+  data = buffer;
+  while (nread < isize) {
+    c = Scm_Getz(data, (int)isize, SCM_PORT(iport));
+    data = data + c;
+    nread += c;
+  }
 
-  if ((size_t)wc == isize) {
+  if ((size_t)nread >= isize) {
     return isize;
   } else {
     return 0;
   }
+
 }
 
 

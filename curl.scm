@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2009/06/21 20:48.30"
+;;; Last Updated: "2009/07/08 11:59.32"
 ;;;
 ;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
 
@@ -49,6 +49,7 @@
    curl-easy-unescape
    curl-free
    curl-getenv
+   curl-getdate
    curl-easy-send
    curl-easy-recv
 
@@ -332,8 +333,6 @@
    CURLOPT_PROXYUSERNAME
    CURLOPT_PROXYPASSWORD
 
-   CURLOPTTYPE_OFF_T
-
    ;; curl information code
    CURLINFO_NONE
    CURLINFO_EFFECTIVE_URL
@@ -412,6 +411,62 @@
    CURLSHOPT_UNLOCKFUNC
    CURLSHOPT_USERDATA
    CURLSHOPT_LAST
+
+   ;; Proxy type
+   CURLPROXY_HTTP
+   CURLPROXY_HTTP_1_0
+   CURLPROXY_SOCKS4
+   CURLPROXY_SOCKS5
+   CURLPROXY_SOCKS4A
+   CURLPROXY_SOCKS5_HOSTNAME 
+
+   ;; IP resolve option
+   CURL_IPRESOLVE_WHATEVER
+   CURL_IPRESOLVE_V4
+   CURL_IPRESOLVE_V6
+
+   ;; SSH auth type
+   CURLSSH_AUTH_PUBLICKEY
+   CURLSSH_AUTH_PASSWORD
+   CURLSSH_AUTH_HOST
+   CURLSSH_AUTH_KEYBOARD
+   CURLSSH_AUTH_ANY
+   CURLSSH_AUTH_DEFAULT
+
+   ;; FTP Method type
+   CURLFTPMETHOD_MULTICWD
+   CURLFTPMETHOD_NOCWD
+   CURLFTPMETHOD_SINGLECWD
+
+   ;; FTP use SSL option 
+   CURLUSESSL_NONE
+   CURLUSESSL_TRY
+   CURLUSESSL_CONTROL
+   CURLUSESSL_ALL
+
+   ;; FTP Auth type
+   CURLFTPAUTH_DEFAULT
+   CURLFTPAUTH_SSL
+   CURLFTPAUTH_TLS
+
+   ;; FTP SSL CCC option
+   CURLFTPSSL_CCC_NONE
+   CURLFTPSSL_CCC_PASSIVE
+   CURLFTPSSL_CCC_ACTIVE
+
+   ;; SSL version
+   CURL_SSLVERSION_DEFAULT
+   CURL_SSLVERSION_TLSv1
+   CURL_SSLVERSION_SSLv2
+   CURL_SSLVERSION_SSLv3
+
+   ;; time condition value
+   CURL_TIMECOND_NONE
+   CURL_TIMECOND_IFMODSINCE
+   CURL_TIMECOND_IFUNMODSINCE
+   CURL_TIMECOND_LASTMOD
+
+
    )
   )
 (select-module curl)
@@ -434,11 +489,15 @@
 (define-class <curl> (<curl-meta>)
   ((url :allocation :instance
 	:init-keyword :url
+	:init-value ""
 	:accessor url-of)
    (options :allocation :instance
-	   :init-keyword :options
-	   :init-value ""
-	   :accessor options-of)))
+	    :init-keyword :options
+	    :init-value ""
+	    :accessor options-of)
+   (http-headers :allocation :instance
+		 :init-value '()
+		 :accessor http-headers-of)))
 
 (define-class <curl-share> (<curl-meta> <singleton-mixin>)
   ())
@@ -512,7 +571,7 @@
 	 (ignore-content-length "ignore-content-length" #f)
 	 (referer "e|referer=s" #f)
 	 (interface "interface=s" #f)
-	 (url "url=s" #f)
+	 (urlstr "url=s" #f)
 	 (tcp-nodelay "tcp-nodelay" #f)
 	 (compressed "compressed"   #f)
 	 (user "u|user=s" #f)
@@ -527,6 +586,14 @@
 	 (get "G|get" #f)
 	 (header "H|header=s" #f)
 	 (proxy "x|proxy=s" #f)
+	 (proxy1.0 "proxy1_0=s" #f)
+	 (socks4 "socks4=s" #f)
+	 (socks4a "socks4a=s" #f)
+	 (socks5 "socks5=s" #f)
+	 (socks5-gssapi-nec "socks5-gssapi-nec" #f)
+	 (socks5-gssapi-service "socks5-gssapi-service=s" #f)
+	 (socks5-hostname "socks5-hostname=s" #f)
+	 (proxytunnel "p|proxytunnel" #f)
 	 (noproxy "noproxy=s" #f)
 	 (proxy-user "U|proxy-user=s" #f)
 	 (proxy-anyauth "proxy-anyauth" #f)
@@ -546,12 +613,76 @@
 	 (max-filesize "max-filesize=i" #f)
 	 (max-redirs "max-redirs=i" #f)
 	 (connect-timeout "connect-timeout=i" #f)
-	 (max-time "m|max-time=i" #f))
+	 (max-time "m|max-time=i" #f)
+	 (http1.0 "0|http1_0" #f)
+	 (raw "raw" #f)
+	 (time-cond "z|time-cond=s" #f)
+	 (range "r|range=s" #f)
+	 (local-port "local-port=s" #f)
+	 (ipv4 "4|ipv4" #f)
+	 (ipv6 "6|ipv6" #f)
+	 (tlsv1 "1|tlsv1" #f)
+	 (sslv2 "2|sslv2" #f)
+	 (sslv3 "3|sslv3" #f)
+	 (cacert "cacert=s" #f)
+	 (capath "capath=s" #f)
+	 (cert-type "cert-type=s" #f) 
+	 (ciphers "ciphers=s" #f)
+	 (random-file "random-file=s" #f)
+	 (egd-file "egd-file=s" #f)
+	 (engine "engine=s" #f)
+	 (sessionid "sessionid" #f)
+	 (no-sessionid "no-sessionid" #f)
+	 (cert "E|cert=s" #f)
+	 (key "key=s" #f)
+	 (key-type "key-type=s" #f)
+	 (pass "pass=s" #f)
+	 (insecure "k|insecure" #f)
+	 (pubkey "pubkey=s" #f)
+	 (hostpubmd5 "hostpubmd5=s" #f)
+	 (ftp-port "P|ftp-port=s" #f)
+	 (ftp-pasv "ftp-pasv" #f)
+	 (quote "Q|quote=s" #f)
+	 (list-only "l|list-only" #f)
+	 (append "a|append" #f)
+	 (ftp-create-dirs "ftp-create-dirs" #f)
+	 (use-ascii "B|use-ascii" #f)
+	 (crlf "crlf" #f)
+	 (disable-eprt "disable-eprt" #f)
+	 (disable-epsv "disable-epsv" #f)
+	 (no-eprt "no-eprt" #f)
+	 (no-epsv "no-epsv" #f)
+	 (eprt "eprt" #f)
+	 (epsv "epsv" #f)
+	 (ftp-skip-pasv-ip "ftp-skip-pasv-ip" #f)
+	 (ftp-alternative-to-user "ftp-alternative-to-user=s" #f)
+	 (ftp-account "ftp-account=s" #f)
+	 (ftp-method "ftp-method=s"#f )
+	 (krb "krb=s" #f)
+	 (ftp-ssl "ftp-ssl" #f)
+	 (ftp-ssl-control "ftp-ssl-control" #f)
+	 (ftp-ssl-reqd "ftp-ssl-reqd" #f)
+	 (ftp-ssl-ccc "ftp-ssl-ccc" #f)
+	 (ftp-ssl-ccc-mode "ftp-ssl-ccc-mode=s" #f)
+	 (telnet-option "t|telnet-option=s" #f))
       ;; common
-      (when url (begin (_ curl CURLOPT_URL url) (slot-set! curl 'url url)))
+      (when urlstr (begin (_ curl CURLOPT_URL urlstr) (set! (url-of curl) urlstr)))
       (when curl-share-enable (_ curl CURLOPT_SHARE (handler-of (make <curl-share>))))
       (if connect-timeout (_ curl CURLOPT_CONNECTTIMEOUT connect-timeout) (_ curl CURLOPT_CONNECTTIMEOUT 0))
       (if max-time (_ curl CURLOPT_TIMEOUT max-time) (_ curl CURLOPT_TIMEOUT 0))
+      (when ipv4 (_ curl CURLOPT_IPRESOLVE CURL_IPRESOLVE_V4))
+      (when (fc "IPv6") (when ipv6 (_ curl CURLOPT_IPRESOLVE CURL_IPRESOLVE_V6)))
+      (if range
+	  (_ curl CURLOPT_RANGE range)
+	  (_ curl CURLOPT_RANGE #f))
+      (when (vc "7.15.2")
+	(when local-port
+	  (cond ((#/^(\d+)(\-(\d+))?$/ local-port) 
+		 => (lambda (m) 
+		      (begin
+			(_ curl CURLOPT_LOCALPORT (string->number (m 1)))
+			(when (m 3) (_ curl CURLOPT_LOCALPORTRANGE (string->number (m 3)))))))
+		(else <curl-error> :message "local port range is invalid."))))
       ;; debug
       (if verbose (_ curl CURLOPT_VERBOSE 1) (_ curl CURLOPT_VERBOSE 0))
       (when stderr (curl-open-file hnd CURLOPT_STDERR stderr))
@@ -565,7 +696,8 @@
       (if referer
  	  (begin
 	    (if (#/\;auto$/ referer) (_ curl CURLOPT_AUTOREFERER 1) (_ curl CURLOPT_AUTOREFERER 0))
-	    (cond ((#/(^.+)\;auto$/ referer) => (lambda (m) (unless (= (string-length (m 1)) 0) (_ curl CURLOPT_REFERER (m 1)))))))
+	    (cond ((#/(^.+)\;auto$/ referer)
+		   => (lambda (m) (unless (= (string-length (m 1)) 0) (_ curl CURLOPT_REFERER (m 1)))))))
 	  (_ curl CURLOPT_REFERER #f))
       (when compressed (_ curl CURLOPT_ENCODING ""))
       (if fail (_ curl CURLOPT_FAILONERROR 1) (_ curl CURLOPT_FAILONERROR 0))
@@ -574,6 +706,26 @@
       (if head (_ curl CURLOPT_NOBODY 1) (_ curl CURLOPT_NOBODY 0))
       (when post301 (_ curl CURLOPT_POSTREDIR CURL_REDIR_POST_301))
       (when post302 (_ curl CURLOPT_POSTREDIR CURL_REDIR_POST_302))
+      (when http1.0 (_ curl CURLOPT_HTTP_VERSION CURL_HTTP_VERSION_1_0))
+      (when (vc "7.16.2")
+	(when raw
+	  (begin
+	    (_ curl CURLOPT_HTTP_CONTENT_DECODING 0)
+	    (_ curl CURLOPT_HTTP_TRANSFER_DECODING 0))))
+      (when time-cond
+	(cond ((#/^([\+\-\=])?(.+)$/ time-cond)
+	       => (lambda (m) 
+		    (let ((condition (m 1))
+			  (timeval (m 2)))
+		      (cond ((equal? condition "+") (_ curl CURLOPT_TIMECONDITION CURL_TIMECOND_IFMODSINCE))
+			    ((equal? condition "-") (_ curl CURLOPT_TIMECONDITION CURL_TIMECOND_IFUNMODSINCE))
+			    ((equal? condition "=") (_ curl CURLOPT_TIMECONDITION CURL_TIMECOND_LASTMOD))
+			    (else (_ curl CURLOPT_TIMECONDITION CURL_TIMECOND_IFMODSINCE)))
+		      (if (< (curl-getdate timeval) 0)
+			  (if (file-exists? timeval) (_ curl CURLOPT_TIMEVALUE (sys-stat->mtime (sys-stat timeval)))
+			      (_ curl CURLOPT_TIMECONDITION CURL_TIMECOND_NONE))
+			  ;; FIXME: CURLOPT_TIMEVALUE is not reflected.
+			  (_ curl CURLOPT_TIMEVALUE (curl-getdate timeval))))))))
       ;; output
       (if output (curl-open-output-file curl output) (curl-open-port hnd CURLOPT_WRITEDATA (current-output-port)))
       (when remote-name (curl-open-output-file curl
@@ -581,7 +733,10 @@
 						 (if (equal? fn "") "index.html" fn))))
       (if remote-time (_ curl CURLOPT_FILETIME 1) (_ curl CURLOPT_FILETIME 0))
       (when dump-header (curl-open-header-file curl dump-header))
-      (when max-filesize (_ curl CURLOPT_MAXFILESIZE_LARGE max-filesize))
+      (when max-filesize 
+	(if (fc "Largefile")
+	    (_ curl CURLOPT_MAXFILESIZE_LARGE max-filesize)
+	    (_ curl CURLOPT_MAXFILESIZE max-filesize)))
       (if include (_ curl CURLOPT_HEADER 1) (_ curl CURLOPT_HEADER 0))
       (if interface (_ curl CURLOPT_INTERFACE interface) (_ curl CURLOPT_INTERFACE #f))
       (if tcp-nodelay (_ curl CURLOPT_TCP_NODELAY 1) (_ curl CURLOPT_TCP_NODELAY 0))
@@ -589,24 +744,64 @@
       (if user (_ curl CURLOPT_USERPWD user) (_ curl CURLOPT_USERPWD #f))
       (when basic (_ curl CURLOPT_HTTPAUTH CURLAUTH_BASIC))
       (when digest (_ curl CURLOPT_HTTPAUTH CURLAUTH_DIGEST))
-      (when negotiate (_ curl CURLOPT_HTTPAUTH CURLAUTH_GSSNEGOTIATE))
-      (when ntlm (_ curl CURLOPT_HTTPAUTH CURLAUTH_NTLM))
+      (when (fc "GSS-Negotiate") (when negotiate (_ curl CURLOPT_HTTPAUTH CURLAUTH_GSSNEGOTIATE)))
+      (when (fc "NTLM") (when ntlm (_ curl CURLOPT_HTTPAUTH CURLAUTH_NTLM)))
       (when anyauth (_ curl CURLOPT_HTTPAUTH CURLAUTH_ANY))
       ;; proxy
-      (if proxy (_ curl CURLOPT_PROXY proxy) (_ curl CURLOPT_PROXY #f))
-      (when (vc "7.19.4") (if noproxy (_ curl CURLOPT_NOPROXY noproxy) (_ curl CURLOPT_NOPROXY #f)))
+      (if proxy 
+	  (begin 
+	    (_ curl CURLOPT_PROXYTYPE CURLPROXY_HTTP)
+	    (_ curl CURLOPT_PROXY proxy))
+	  (_ curl CURLOPT_PROXY #f))
+      (when (vc "7.15.2")
+	(if socks4 
+	    (begin 
+	      (_ curl CURLOPT_PROXYTYPE CURLPROXY_SOCKS4)
+	      (_ curl CURLOPT_PROXY socks4))
+	    (_ curl CURLOPT_PROXY #f))
+	(when (vc "7.18.0")
+	  (begin
+	    (if socks4a 
+		(begin 
+		  (_ curl CURLOPT_PROXYTYPE CURLPROXY_SOCKS4A)
+		  (_ curl CURLOPT_PROXY socks4a))
+		(_ curl CURLOPT_PROXY #f))
+	    (if socks5
+		(begin
+		  (_ curl CURLOPT_PROXYTYPE CURLPROXY_SOCKS5)
+		  (_ curl CURLOPT_PROXY socks5))
+		(_ curl CURLOPT_PROXY #f))
+	    (if socks5-hostname
+		(begin
+		  (_ curl CURLOPT_PROXYTYPE CURLPROXY_SOCKS5_HOSTNAME)
+		  (_ curl CURLOPT_PROXY socks5-hostname))
+		(_ curl CURLOPT_PROXY #f))))
+	(when (vc "7.19.0") 
+	  (when proxytunnel (_ curl CURLOPT_HTTPPROXYTUNNEL 1)))
+	(when (vc "7.19.4")
+	  (begin
+	    (if proxy1.0 
+		(begin
+		  (_ curl CURLOPT_PROXYTYPE CURLPROXY_HTTP_1_0)
+		  (_ curl CURLOPT_PROXY proxy1.0))
+		(_ curl CURLOPT_PROXY #f)))
+	  (if socks5-gssapi-nec (_ curl CURLOPT_PROXYTYPE 1) (_ curl CURLOPT_PROXYTYPE 0))
+	  (when socks5-gssapi-service (_ curl CURLOPT_SOCKS5_GSSAPI_SERVICE socks5-gssapi-service))
+	  (if noproxy (_ curl CURLOPT_NOPROXY noproxy) (_ curl CURLOPT_NOPROXY #f)))
       (if proxy-user (_ curl CURLOPT_PROXYUSERPWD proxy-user) (_ curl CURLOPT_PROXYUSERPWD #f))
       (when proxy-anyauth (_ curl CURLOPT_PROXYAUTH CURLAUTH_ANY))
       (when proxy-basic (_ curl CURLOPT_PROXYAUTH CURLAUTH_BASIC))
       (when proxy-digest (_ curl CURLOPT_PROXYAUTH CURLAUTH_DIGEST))
-      (when proxy-negotiate (_ curl CURLOPT_PROXYAUTH CURLAUTH_GSSNEGOTIATE))
-      (when proxy-ntlm (_ curl CURLOPT_PROXYAUTH CURLAUTH_NTLM))
+      (when (fc "GSS-Negotiate") (when proxy-negotiate (_ curl CURLOPT_PROXYAUTH CURLAUTH_GSSNEGOTIATE)))
+      (when (fc "NTLM") (when proxy-ntlm (_ curl CURLOPT_PROXYAUTH CURLAUTH_NTLM)))
       ;; data upload
       (when upload-file 
 	(begin
 	  (_ curl CURLOPT_UPLOAD 1)
 	  (curl-open-input-file curl upload-file)
-	  (_ curl CURLOPT_INFILESIZE_LARGE (slot-ref (sys-stat upload-file) 'size))
+	  (if (fc "Largefile")
+	      (_ curl CURLOPT_INFILESIZE_LARGE (slot-ref (sys-stat upload-file) 'size))
+	      (_ curl CURLOPT_INFILESIZE (slot-ref (sys-stat upload-file) 'size)))
 	  (when (#/^http/ (url-of curl))
 	    (let1 purl (string-append  
 			(url-of curl) (if (#/\/$/ (url-of curl)) "" "/") (uri-encode-string upload-file))
@@ -616,12 +811,16 @@
 	(begin
 	  (_ curl CURLOPT_POST 1)
 	  (if (#/^@/ data) (curl-open-input-file curl data) (_ curl CURLOPT_POSTFIELDS data))
-	  (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1)))
+	  (if (fc "Largefile")
+	      (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1)
+	      (_ curl CURLOPT_POSTFIELDSIZE -1))))
       (when data-binary
 	(begin
 	  (_ curl CURLOPT_POST 1)
 	  (if (#/^@/ data-binary) (curl-open-input-file curl data-binary) (_ curl CURLOPT_POSTFIELDS data-binary))
-	  (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1)))
+	  (if (fc "Largefile")
+	      (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1)
+	      (_ curl CURLOPT_POSTFIELDSIZE -1))))
       (when data-urlencode
 	  (begin
 	    (_ curl CURLOPT_POST 1)
@@ -647,7 +846,9 @@
 			   (uri-encode-string (m 1)))))
 		  (else  
 		   (_ curl CURLOPT_POSTFIELDS (uri-encode-string data-urlencode))))
-	    (_ curl CURLOPT_POSTFIELDSIZE_LARGE -1)))
+	    (if (fc "Largefile")
+		(_ curl CURLOPT_POSTFIELDSIZE_LARGE -1)
+		(_ curl CURLOPT_POSTFIELDSIZE -1))))
       (if ignore-content-length (_ curl CURLOPT_IGNORE_CONTENT_LENGTH 1) (_ curl CURLOPT_IGNORE_CONTENT_LENGTH 0))
       ;; cookie
       (if junk-session-cookies (_ curl CURLOPT_COOKIESESSION 0) (_ curl CURLOPT_COOKIESESSION 1))
@@ -659,97 +860,137 @@
 	  (begin
 	    (_ curl CURLOPT_COOKIE #f)
 	    (_ curl CURLOPT_COOKIEFILE #f)))
-      (if cookie-jar (_ curl CURLOPT_COOKIEJAR cookie-jar) (_ curl CURLOPT_COOKIEJAR #f)))))
+      (if cookie-jar (_ curl CURLOPT_COOKIEJAR cookie-jar) (_ curl CURLOPT_COOKIEJAR #f))
+      ;; SSL
+      (when (fc "SSL")
+	(begin
+	  (when (vc "7.19.1") (_ curl CURLOPT_CERTINFO 1))
+	  (when tlsv1 (_ curl CURLOPT_SSLVERSION CURL_SSLVERSION_TLSv1))
+	  (when sslv2 (_ curl CURLOPT_SSLVERSION CURL_SSLVERSION_SSLv2))
+	  (when sslv3 (_ curl CURLOPT_SSLVERSION CURL_SSLVERSION_SSLv3))
+	  (when cacert (_ curl CURLOPT_SSLCERT cacert))
+	  (when capath (_ curl CURLOPT_CAPATH capath))
+	  (when cert-type 
+	    (cond ((equal? cert-type "PEM") (_ curl CURLOPT_SSLCERTTYPE cert-type))
+		  ((equal? cert-type "DER") (_ curl CURLOPT_SSLCERTTYPE cert-type))
+		  (else (error <curl-error> :message "SSL CERT type is invalid."))))
+	  (when ciphers (_ curl CURLOPT_SSL_CIPHER_LIST ciphers))
+	  (when random-file (_ curl CURLOPT_RANDOM_FILE random-file))
+	  (when egd-file (_ curl CURLOPT_EGDSOCKET egd-file))
+	  (when engine (_ curl CURLOPT_SSLENGINE engine))
+	  (when (vc "7.16.0")
+	    (begin
+	      (when sessionid (_ curl CURLOPT_SSL_SESSIONID_CACHE 1))
+	      (when no-sessionid (_ curl CURLOPT_SSL_SESSIONID_CACHE 0))))
+	  (when cert 
+	    (cond ((#/^(.+):(.+)$/ cert) 
+		   => (lambda (m) 
+			(begin
+			  (_ curl CURLOPT_SSLKEY (m 1))
+			  (_ curl CURLOPT_KEYPASSWD (m 2)))))
+		  (else (_ curl CURLOPT_SSLKEY cert))))
+	  (when key (_ curl CURLOPT_KEYPASSWD key))
+	  (when key-type 
+	    (cond ((equal? key-type "PEM") (_ curl CURLOPT_SSLKEYTYPE key-type))
+		  ((equal? key-type "DER") (_ curl CURLOPT_SSLKEYTYPE key-type))
+		  ((equal? key-type "ENG") (_ curl CURLOPT_SSLKEYTYPE key-type))
+		  (else (error <curl-error> :message "SSL private key type is invalid."))))
+	  (when pass (_ curl CURLOPT_KEYPASSWD pass))
+	  (when insecure (_ curl CURLOPT_SSL_VERIFYHOST 0))))
+      ;; SSH
+      (when (pc "scp")
+	(begin
+	  (_ curl CURLOPT_SSH_AUTH_TYPES CURLSSH_AUTH_DEFAULT)
+	  (when key (_ curl CURLOPT_SSH_PRIVATE_KEYFILE key))
+	  (when pubkey (_ curl CURLOPT_SSH_PUBLIC_KEYFILE pubkey))
+	  (when hostpubmd5 (_ curl CURLOPT_SSH_HOST_PUBLIC_KEY_MD5 hostpubmd5))
+	  (when pass (_ CURLOPT_KEYPASSWD pass))))
+      ;; FTP
+      (when (pc "ftp")
+	(begin
+	  (if ftp-port (_ curl CURLOPT_FTPPORT ftp-port) (_ curl CURLOPT_FTPPORT #f))
+	  (when ftp-pasv (_ curl CURLOPT_FTPPORT #f))
+	  (when quote (_ curl CURLOPT_QUOTE (list->curl-slist (string-split quote #\,))))
+	  (when list-only (_ curl CURLOPT_DIRLISTONLY 1))
+	  (when append (_ curl CURLOPT_APPEND 1))
+	  (when use-ascii (_ curl CURLOPT_TRANSFERTEXT 1))
+	  (cond ((#/^(.+)\;type\=A$/ (url-of curl)) 
+		 => (lambda (m) 
+		      (begin
+			(_ curl CURLOPT_URL (m 1))
+			(slot-set! curl 'url (m 1))
+			(_ curl CURLOPT_TRANSFERTEXT 1)))))
+	  (when crlf (_ curl CURLOPT_CRLF 1))
+	  (when (vc "7.10.5")
+	    (begin
+	      (if disable-eprt (_ curl CURLOPT_FTP_USE_EPRT 0) (_ curl CURLOPT_FTP_USE_EPRT 1))
+	      (if no-eprt (_ curl CURLOPT_FTP_USE_EPRT 0) (_ curl CURLOPT_FTP_USE_EPRT 1))
+	      (if eprt (_ curl CURLOPT_FTP_USE_EPRT 1) (_ curl CURLOPT_FTP_USE_EPRT 0))))
+	  (if disable-epsv (_ curl CURLOPT_FTP_USE_EPSV 0) (_ curl CURLOPT_FTP_USE_EPSV 1))
+	  (if no-epsv (_ curl CURLOPT_FTP_USE_EPSV 0) (_ curl CURLOPT_FTP_USE_EPSV 1))
+	  (if epsv (_ curl CURLOPT_FTP_USE_EPSV 1) (_ curl CURLOPT_FTP_USE_EPSV 0))
+	  (when (vc "7.10.7") (when ftp-create-dirs (_ curl CURLOPT_FTP_CREATE_MISSING_DIRS 2)))
+	  (when (vc "7.13.0")  (when ftp-account (_ curl CURLOPT_FTP_ACCOUNT ftp-account)))
+	  (when (vc "7.14.2") (when ftp-skip-pasv-ip (_ curl CURLOPT_FTP_SKIP_PASV_IP 1)))
+	  (when (vc "7.15.1")
+	    (when ftp-method
+	      (cond ((equal? ftp-method "multicwd") (_ curl CURLOPT_FTP_FILEMETHOD CURLFTPMETHOD_MULTICWD))
+		    ((equal? ftp-method "nocwd") (_ curl CURLOPT_FTP_FILEMETHOD CURLFTPMETHOD_NOCWD))
+		    ((equal? ftp-method "singlecwd") (_ curl CURLOPT_FTP_FILEMETHOD CURLFTPMETHOD_SINGLECWD))
+		    (else (error <curl-error> :message "ftp method is invalid.")))))
+	  (when (vc "7.15.5") (when ftp-alternative-to-user (_ curl CURLOPT_FTP_ALTERNATIVE_TO_USER ftp-alternative-to-user)))
+	  (when (fc "GSS-Negotiate") (when krb (_ curl CURLOPT_KRBLEVEL krb)))
+	  (when (pc "ftps")
+	    (begin
+	      (when ftp-ssl (_ curl CURLOPT_USE_SSL CURLUSESSL_TRY))
+	      (when ftp-ssl-control (_ curl CURLOPT_USE_SSL CURLUSESSL_CONTROL))
+	      (when ftp-ssl-reqd (_ curl CURLOPT_USE_SSL CURLUSESSL_ALL))
+	      (when ftp-ssl-ccc (_ curl CURLOPT_FTP_SSL_CCC CURLFTPSSL_CCC_PASSIVE))
+	      (when ftp-ssl-ccc-mode
+		(cond ((equal? ftp-ssl-ccc-mode "active") (_ curl CURLOPT_FTP_SSL_CCC CURLFTPSSL_CCC_ACTIVE))
+		      ((equal? ftp-ssl-ccc-mode "passive") (_ curl CURLOPT_FTP_SSL_CCC CURLFTPSSL_CCC_PASSIVE))
+		      (else (error <curl-error> :message "ftp ssl ccc mode is invalid."))))))))
+      ;; LDAP
+      (when (pc "ldap")
+	(when use-ascii (_ curl CURLOPT_TRANSFERTEXT) 1))
+      ;; telnet
+      (when (pc "telnet")
+	(when telnet-option (_ curl CURLOPT_TELNETOPTIONS (list->curl-slist (string-split telnet-option #\,)))))))))
 
-;(_ curl CURLOPT_HTTPAUTH CURLAUTH_ANYSAFE)
-;(_ curl CURLOPT_HTTPAUTH CURLAUTH_DIGEST_IE)
-
-;;        (progress-bar "#|progress-bar" #f)
+;; fflush
 ;;        (buffer "buffer" #f)
-;;        (cacert "cacert=s")
-;;        (capath "capath=s")
-;;        (cert-type "cert-type=s") 
-;;        (ciphers "ciphers=s")
-;;        (create-dirs "create-dirs" #f)
-;;        (crlf "crlf" #f)
-;;        (disable-eprt "disable-eprt" #f)
-;;        (disable-epsv "disable-epsv" #f)
-;;        (egd-file "egd-file=s" )
-;;        (engine "engine=s" )
-;;        (environment "environment" #f)
-;;        (eprt "eprt" #f)
-;;        (epsv "epsv" #f)
-;;        (form-string "form-string=s" )
-;;        (ftp-account "ftp-account=s" )
-;;        (ftp-alternative-to-user "ftp-alternative-to-user=s" )
-;;        (ftp-create-dirs "ftp-create-dirs" #f)
-;;        (ftp-method "ftp-method=s" )
-;;        (ftp-pasv "ftp-pasv" #f)
-;;        (ftp-skip-pasv-ip "ftp-skip-pasv-ip" #f)
-;;        (ftp-ssl "ftp-ssl" #f)
-;;        (ftp-ssl-ccc "ftp-ssl-ccc" #f)
-;;        (ftp-ssl-ccc-mode "ftp-ssl-ccc-mode=s" )
-;;        (ftp-ssl-control "ftp-ssl-control" #f)
-;;        (ftp-ssl-reqd "ftp-ssl-reqd" #f)
-;;        (hostpubmd5 "hostpubmd5=s" )
-;;        (keepalive "keepalive" #f)
-;;        (key "key=s" )
-;;        (key-type "key-type=s" )
-;;        (krb "krb=s" )
-;;        (limit-rate "limit-rate=s" )
-;;        (local-port "local-port=s" )
-;;        (netrc-optional "netrc-optional" #f)
-;;        (no-eprt "no-eprt" #f)
-;;        (no-epsv "no-epsv" #f)
+;;        (no-buffer "N|no-buffer" #f) 
+;; CURLOPT_SOCKOPTFUNCTION, CURLOPT_SOCKOPTDATA
 ;;        (no-keepalive "no-keepalive" #f)
-;;        (no-sessionid "no-sessionid" #f)
-;;        (pass "pass=s" )
-;;        (pubkey "pubkey=s" )
-;;        (random-file "random-file=s" )
-;;        (raw "raw" #f)
+;;        (keepalive "keepalive" #f) 
+;; CURLOPT_BUFFERSIZE, CURLOPT_MAX_SEND_SPEED
+;;        (limit-rate "limit-rate=s" )
+
+;; multi interface
 ;;        (remote-name-all "remote-name-all" #f)
+;;        (globoff "g|globoff" #f)
+;; may not implementaion
+;;        (progress-bar "#|progress-bar" #f)
+;;        (environment "environment" #f)
+
+;;        (create-dirs "create-dirs" #f)
+;;        (form-string "form-string=s" )
+;;        (netrc-optional "netrc-optional" #f)
 ;;        (retry "retry=s" )
 ;;        (retry-delay "retry-delay=s" )
 ;;        (retry-max-time "retry-max-time=s" )
-;;        (sessionid "sessionid" #f)
-;;        (socks4 "socks4=s" )
-;;        (socks4a "socks4a=s" )
-;;        (socks5 "socks5=s" )
-;;        (socks5-gssapi-nec "socks5-gssapi-nec" #f)
-;;        (socks5-gssapi-service "socks5-gssapi-service=s" )
-;;        (socks5-hostname "socks5-hostname=s" )
 ;;        (trace "trace=s" )
 ;;        (trace-ascii "trace-ascii=s" )
 ;;        (trace-time "trace-time" #f)
-;;        (http1.0 "0|http1.0" #f)
-;;        (tlsv1 "1|tlsv1" #f)
-;;        (sslv2 "2|sslv2" #f)
-;;        (sslv3 "3|sslv3" #f)
-;;        (ipv4 "4|ipv4" #f)
-;;        (ipv6 "6|ipv6" #f)
-;;        (use-ascii "B|use-ascii" #f)
 ;;        (continue-at "C|continue-at=s" )
-;;        (cert "E|cert=s" )
-;;        (form "F|form=s" )
 ;;        (config "K|config=s" )
-;;        (no-buffer "N|no-buffer" #f)
-;;        (ftp-port "P|ftp-port=s" )
-;;        (quote "Q|quote=s" )
+;;        (netrc "n|netrc" #f)
 ;;        (show-error "S|show-error" #f)
 ;;        (speed-limit "Y|speed-limit=s" )
-;;        (append "a|append" #f)
-;;        (globoff "g|globoff" #f)
-;;        (insecure "k|insecure" #f)
-;;        (list-only "l|list-only" #f)
-;;        (netrc "n|netrc" #f)
-;;        (proxytunnel "p|proxytunnel" #f)
-;;        (q "q" #f)
-;;        (range "r|range=s" )
-;;        (silent "s|silent" #f)
-;;        (telnet-option "t|telnet-option=s" )
-;;        (write-out "w|write-out=s" )
 ;;        (speed-time "y|speed-time=s" )
-;;        (time-cond "z|time-cond=s"))
+;;        (q "q" #f)
+;;        (silent "s|silent" #f)
+;;        (write-out "w|write-out=s" )
 ;;        (keepalive-time "keepalive-time=i" #f)
 
 ; procedure
@@ -758,12 +999,17 @@
     (if hnd 
 	(let1 res (curl-easy-setopt hnd opt (if (list? val) 
 						(list->curl-slist val) val))
-	      (slot-set! curl 'rc res)
-	      (if (= res 0) #t #f))
+	  (slot-set! curl 'rc res)
+	  (when (equal? opt CURLOPT_HTTPHEADER)
+	    (unless (equal? (http-headers-of curl) val)
+	      (set! (http-headers-of curl) (append (http-headers-of curl) val))))
+	  (if (= res 0) #t #f))
 	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-perform ((curl <curl>))
   (let1 hnd (handler-of curl)
+    (unless (null? (http-headers-of curl))
+      (curl-setopt! curl CURLOPT_HTTPHEADER (http-headers-of curl)))
     (if hnd (let1 res (curl-easy-perform hnd)
 	      (slot-set! curl 'rc res)
 	      (cond ((= res 0) #t)
@@ -812,7 +1058,7 @@
 	  ,(if (vc "7.12.2") (cons 'NUM_CONNECTS (_ hnd CURLINFO_NUM_CONNECTS)) #f)
 	  ,(if (and (vc "7.13.3") (fc "SSL")) (cons 'SSL_ENGINES (_ hnd CURLINFO_SSL_ENGINES)) #f)
 	  ,(if (vc "7.14.1") (cons 'COOKIELIST (_ hnd CURLINFO_COOKIELIST)) #f)
-	  ,(if (vc "7.15.2") (cons 'LASTSOCKET (_ hnd CURLINFO_LASTSOCKET)) #f)
+	  ,(if (vc "7.15.2") (cons 'LATSOCKET (_ hnd CURLINFO_LASTSOCKET)) #f)
 	  ,(if (and (vc "7.15.4") (sc "ftp" (url-of curl))) (cons 'FTP_ENTRY_PATH (_ hnd CURLINFO_FTP_ENTRY_PATH)) #f)
 	  ,(if (vc "7.18.2") (cons 'REDIRECT_URL (_ hnd CURLINFO_REDIRECT_URL)) #f)
 	  ,(if (vc "7.19.0") (cons 'PRIMARY_IP (_ hnd CURLINFO_PRIMARY_IP)) #f)
@@ -828,6 +1074,7 @@
 	  (cond ((undefined? res)
 		 (slot-set! curl 'handler #f)
 		 (slot-set! curl 'url "")
+		 (slot-set! curl 'http-headers '())
 		 (slot-set! curl 'rc #f)
 		 #t)
 		(else #f)))
@@ -858,7 +1105,9 @@
 	(begin 
 	  (curl-open-file hnd CURLOPT_READDATA filename)
 	  (curl-setopt! curl CURLOPT_POSTFIELDS #f)
-	  (curl-setopt! curl CURLOPT_POSTFIELDSIZE_LARGE -1))
+	  (if (fc "Largefile")
+	      (curl-setopt! curl CURLOPT_POSTFIELDSIZE_LARGE -1)
+	      (curl-setopt! curl CURLOPT_POSTFIELDSIZE -1)))
 	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-open-header-file ((curl <curl>) filename)
@@ -891,7 +1140,8 @@
 			  (if (input-port? in) in
 			      (else (error <curl-error> :message "Set input port."))))
 	  (curl-setopt! curl CURLOPT_POSTFIELDS #f)
-	  (curl-setopt! curl CURLOPT_POSTFIELDSIZE_LARGE -1))
+	  (when (eq? in (standard-input-port)) 
+	    (slot-set! curl 'http-headers (append (http-headers-of curl) '("Transfer-Encoding: chunked")))))
 	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-open-header-port ((curl <curl>) . out)
