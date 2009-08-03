@@ -2,7 +2,7 @@
 /*
  * curl.h
  *
- * Last Updated: "2009/06/20 10:57.13"
+ * Last Updated: "2009/08/03 19:32.14"
  *
  * Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
  */
@@ -43,9 +43,16 @@ extern ScmClass *ScmCurl_SListClass;
 #define SCMCURL_SLIST_UNBOX(obj) SCM_FOREIGN_POINTER_REF(struct curl_slist*, obj)
 #define SCMCURL_SLIST_BOX(ptr) Scm_MakeForeignPointer(ScmCurl_SListClass, ptr)
 
+/* <curl-file> */
+extern ScmClass *ScmCurl_FileClass;
+#define SCMCURL_FILE_P(obj) SCM_XTYPEP(obj, ScmCurl_FileClass)
+#define SCMCURL_FILE_UNBOX(obj) SCM_FOREIGN_POINTER_REF(FILE*, obj)
+#define SCMCURL_FILE_BOX(ptr) Scm_MakeForeignPointer(ScmCurl_FileClass, ptr)
+
 /* I/O  */
-extern ScmObj curl_open_file(CURL* hnd, int type, const char *fn);
-extern ScmObj curl_open_port(CURL* hnd, int type, ScmObj *scm_port);
+extern FILE *curl_open_file(CURL *hnd, int type, const char *fn);
+extern ScmObj curl_open_port(CURL *hnd, int type, ScmObj *scm_port);
+extern ScmObj curl_close_file(FILE *fp);
 
 /* convert from/to curl_slist to/from sheme list */
 extern struct curl_slist *list_to_curl_slist (ScmObj ls);
@@ -54,7 +61,7 @@ extern ScmObj curl_slist_to_list (void *slist);
 /* CURLOPT_WRITEFUNCTION */
 extern size_t write_to_port(void *buffer, size_t sz, size_t nmemb, void *scm_port);
 /* CURLOPT_READFUNCTION */
-extern size_t read_from_port(void *buffer, size_t sz, size_t nmemb, void *stream);
+extern size_t read_from_port(void *buffer, size_t sz, size_t nmemb, void *scm_port);
 /* CURLOPT_IOCTLFUNCTION */
 /* CURLOPT_SEEKFUNCTION */
 /* CURLOPT_SOCKOPTFUNCTION */

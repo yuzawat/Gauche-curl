@@ -2,7 +2,7 @@
 /*
  * curl.c
  *
- * Last Updated: "2009/07/05 13:37.35"
+ * Last Updated: "2009/08/03 19:34.10"
  *
  * Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
  */
@@ -26,6 +26,9 @@ ScmClass *ScmCurlSHClass;
 /* <curl-slist> */
 ScmClass *ScmCurl_SListClass;
 
+/* <curl-file> */
+ScmClass *ScmCurl_FileClass;
+
 /* <curl-base> cleanup */
 static void curl_cleanup(ScmObj obj)
 {
@@ -47,9 +50,14 @@ static void curlsh_cleanup(ScmObj obj)
   curl_share_cleanup(shhnd);
 }
 
+static void curlfile_cleanup(ScmObj obj)
+{
+  FILE *fp = SCMCURL_FILE_UNBOX(obj);
+  fclose(fp);
+}
 
 /* write to file, read from file */
-ScmObj curl_open_file(CURL *hnd, int type, const char* fn)
+FILE *curl_open_file(CURL *hnd, int type, const char* fn)
 {
   ScmObj *oport;
   FILE* fp;
@@ -107,15 +115,30 @@ ScmObj curl_open_file(CURL *hnd, int type, const char* fn)
       break;
     }
    umask(old_mode);
-   return SCM_UNDEFINED;
+   return fp;
+}
+
+/* only close file pointer */
+ScmObj curl_close_file(FILE *fp)
+{
+  int rc;
+  rc = fclose(fp);
+  if (rc == 0) {
+    return SCM_UNDEFINED;
+  } else {
+    Scm_Error("failed to close file pointer\n");
+  }
 }
 
 /* write to port, read from port */
 ScmObj curl_open_port(CURL* hnd, int type, ScmObj *scm_port)
 {
   ScmObj *port = scm_port;
-  int rc, input_size;
+  int rc, input_size, ver;
   FILE* fp;
+  ver = CURLVERSION_NOW;
+  curl_version_info_data *version_info;
+
   switch (type)
     {
     case CURLOPT_WRITEDATA:
@@ -161,11 +184,13 @@ ScmObj curl_open_port(CURL* hnd, int type, ScmObj *scm_port)
 	  input_size = SCM_INT_VALUE(Scm_PortSeek(SCM_PORT(port), SCM_MAKE_INT(0), SEEK_END));
 	  if (input_size) {
 	    Scm_PortSeek(SCM_PORT(port), SCM_MAKE_INT(0), SEEK_SET);
-	    if (CURL_SIZEOF_CURL_OFF_T > 4) {
+	    version_info = curl_version_info(ver);
+	    if (version_info->features & CURL_VERSION_LARGEFILE) {
 	      rc = curl_easy_setopt(hnd, CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)input_size);
 	    } else {
 	      rc = curl_easy_setopt(hnd, CURLOPT_POSTFIELDSIZE, input_size);
 	    }
+
 	    if (rc != 0) {
 	      Scm_Error("failed to setopt CURLOPT_POSTFIELDSIZE\n");
 	    }
@@ -402,9 +427,18 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
       /* string */
     case CURLINFO_EFFECTIVE_URL:
     case CURLINFO_CONTENT_TYPE:
+#if LIBCURL_VERSION_NUM >= 0x070a03
     case CURLINFO_PRIVATE:
+#endif
+#if LIBCURL_VERSION_NUM >= 0x070f04
     case CURLINFO_FTP_ENTRY_PATH:
+#endif
+#if LIBCURL_VERSION_NUM >= 0x071202
     case CURLINFO_REDIRECT_URL:
+#endif
+#if LIBCURL_VERSION_NUM >= 0x071300
+    case CURLINFO_PRIMARY_IP:
+#endif
       (const char *)result;
       rc = curl_easy_getinfo(hnd, info, &result);
       if ( rc == 0 ) {
@@ -418,8 +452,14 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
       }
       break;
       /* linked list */
+#if LIBCURL_VERSION_NUM >= 0x070d03
     case CURLINFO_SSL_ENGINES:
+#if LIBCURL_VERSION_NUM >= 0x070e01
     case CURLINFO_COOKIELIST:
+#endif
+#if LIBCURL_VERSION_NUM >= 0x071301
+    case CURLINFO_CERTINFO:
+#endif
       (struct curl_slist *)result;
       rc = curl_easy_getinfo(hnd, info, &result);
       if ( rc == 0) {
@@ -432,19 +472,33 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
 	res = SCM_FALSE;
       }
       break;
+#endif
       /* long */
     case CURLINFO_RESPONSE_CODE:
     case CURLINFO_HEADER_SIZE:
     case CURLINFO_REQUEST_SIZE:
     case CURLINFO_SSL_VERIFYRESULT:
+#if LIBCURL_VERSION_NUM >= 0x070500
     case CURLINFO_FILETIME:
+#endif
+#if LIBCURL_VERSION_NUM >= 0x070907
     case CURLINFO_REDIRECT_COUNT:
+#endif
     case CURLINFO_HTTP_CONNECTCODE:
+#if LIBCURL_VERSION_NUM >= 0x070a08
     case CURLINFO_HTTPAUTH_AVAIL:
     case CURLINFO_PROXYAUTH_AVAIL:
+#endif
+#if LIBCURL_VERSION_NUM >= 0x070d02
     case CURLINFO_OS_ERRNO:
     case CURLINFO_NUM_CONNECTS:
+#endif
+#if LIBCURL_VERSION_NUM >= 0x070f02
     case CURLINFO_LASTSOCKET:
+#endif
+#if LIBCURL_VERSION_NUM >= 0x071304
+    case CURLINFO_CONDITION_UNMET:
+#endif
       (long *)result;
       rc = curl_easy_getinfo(hnd, info, &result);
       if ( rc == 0) {
@@ -469,8 +523,12 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
     case CURLINFO_CONTENT_LENGTH_DOWNLOAD:
     case CURLINFO_CONTENT_LENGTH_UPLOAD:
     case CURLINFO_STARTTRANSFER_TIME:
+#if LIBCURL_VERSION_NUM >= 0x070907
     case CURLINFO_REDIRECT_TIME:
+#endif
+#if LIBCURL_VERSION_NUM >= 0x071300
     case CURLINFO_APPCONNECT_TIME:
+#endif
       (double *)result;
       rc = curl_easy_getinfo(hnd, info, &result);
       if ( rc == 0) {
@@ -490,6 +548,7 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
     }
   return res;
 }
+
 
 /*
  * Module initialization function.
@@ -524,6 +583,12 @@ void Scm_Init_curl(void)
 
     ScmCurl_SListClass =
       Scm_MakeForeignPointerClass(mod, "<curl-slist>",
+				  NULL,
+				  NULL,
+				  SCM_FOREIGN_POINTER_KEEP_IDENTITY|SCM_FOREIGN_POINTER_MAP_NULL);
+
+    ScmCurl_FileClass =
+      Scm_MakeForeignPointerClass(mod, "<curl-file>",
 				  NULL,
 				  NULL,
 				  SCM_FOREIGN_POINTER_KEEP_IDENTITY|SCM_FOREIGN_POINTER_MAP_NULL);

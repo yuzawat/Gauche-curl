@@ -6,7 +6,7 @@ Abstract:
  
 Author: yuzawat <suzdalenator ＠ gmail.coml>
 
-Version: 0.1.1 2009/07/08
+Version: 0.1.2 2009/08/03
 ======================================================================
 
 Module: curl
@@ -88,7 +88,8 @@ Method: curl-open-input-file (c <curl>) filename
 Method: curl-open-header-file (c <curl>) filename
 Method: curl-open-error-file (c <curl>) filename
  取得したデータ・アップロードするデータ・ヘッダー情報・デバッグ情報を、指定した文字列のファイルと結び付けます。
- #undefを返します。
+ <curl-file> を返します。<curl-file> はファイルポインタです。ファイルポインタを明示的に閉じないとバッファがフラッシュされないので、閉じるために curl-close-file を使って下さい。
+ curl-open-error-file 以外は、curl-open-*-port に対応するものがあります。
 
 Method: curl-open-output-port (c <curl>) &optional outport
 Method: curl-open-input-port (c <curl>) inport
@@ -207,10 +208,13 @@ Function: curl-share-setopt shnd CURLSHOPT_... val
 Function: curl-share-strerror
  libcurlの返したFunctionの終了コードを、文章として意味のあるメッセージに変換した文字列を返します。
 
-Method: curl-open-file hnd CURLOPT_... filename
- easy interface のハンドラーに、CURLOPT_...で指定された種別のデータを、filenameで指定されたファイルハンドラーに結び付けます。
+Function: curl-open-file hnd CURLOPT_... filename
+ easy interface のハンドラーに、CURLOPT_...で指定された種別のデータを、filenameで指定されたファイルハンドラーに結び付けます。正常終了すると (fp <curl-file>) を返します。<curl-file> はただの FILE* です。
 
-Method: curl-open-port hnd CURLOPT_... port
+Function: curl-close-file fp
+ (fp <curl-file>)（ファイルポインタ）を閉じます。正常終了した場合、#undef を返します。
+
+Function: curl-open-port hnd CURLOPT_... port
  easy interface のハンドラーに、CURLOPT_...で指定された種別のデータを、portで指定されたポートに結び付けます。
 
 Function: list->curl-slist list

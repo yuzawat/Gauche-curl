@@ -1,7 +1,7 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;; curllib.stub
 ;;; 
-;;; Last Updated: "2009/07/06 23:58.11"
+;;; Last Updated: "2009/08/03 19:34.51"
 ;;;
 ;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
 
@@ -21,8 +21,13 @@
 (define-type <curl-share-base> "CURLSH*" "curlsh"
   "SCMCURLSH_P" "SCMCURLSH_UNBOX" "SCMCURLSH_BOX")
 
+;; cURL slist(linked list)
 (define-type <curl-slist> "struct curl_slist*" "curl-slist"
   "SCMCURL_SLIST_P" "SCMCURL_SLIST_UNBOX" "SCMCURL_SLIST_BOX")
+
+;; FILE*
+(define-type <curl-file> "FILE*" "curl-file"
+  "SCMCURL_FILE_P" "SCMCURL_FILE_UNBOX" "SCMCURL_FILE_BOX")
 
 ;; initialize global constants 
 (define-cproc curl-global-init (flags::<int>)
@@ -207,12 +212,17 @@
 
 ; I/O handling
 (define-cproc curl-open-file (hnd::<curl-base> type::<int> fn::<const-cstring>)
-  (body <top>
+  (body <curl-file>
 	"SCM_RESULT = curl_open_file(hnd, type, fn);"))
 
 (define-cproc curl-open-port (hnd::<curl-base> type::<int> port::<top>)
   (body <top>
 	"SCM_RESULT = curl_open_port(hnd, type, (ScmObj*)port);"))
+
+(define-cproc curl-close-file (fp::<curl-file>)
+  (body <top>
+	"SCM_RESULT = curl_close_file(fp);"))
+
 
 ;; global flags
 (define-enum CURL_GLOBAL_ALL)
@@ -616,31 +626,45 @@
 (define-enum CURLINFO_END)
 
 ;; curl auth type
-(define-enum CURLAUTH_NONE)
-(define-enum CURLAUTH_BASIC)
-(define-enum CURLAUTH_DIGEST)
-(define-enum CURLAUTH_GSSNEGOTIATE)
-(define-enum CURLAUTH_NTLM)
-(define-enum CURLAUTH_DIGEST_IE)
-(define-enum CURLAUTH_ANY)
-(define-enum CURLAUTH_ANYSAFE)
-(define-enum CURLSSH_AUTH_ANY)
-(define-enum CURLSSH_AUTH_NONE)
-(define-enum CURLSSH_AUTH_PUBLICKEY)
-(define-enum CURLSSH_AUTH_PASSWORD)
-(define-enum CURLSSH_AUTH_HOST)
-(define-enum CURLSSH_AUTH_KEYBOARD)
-(define-enum CURLSSH_AUTH_DEFAULT)
-(define-enum CURLFTPAUTH_DEFAULT)
-(define-enum CURLFTPAUTH_SSL)
-(define-enum CURLFTPAUTH_TLS)
-(define-enum CURLFTPAUTH_LAST)
+;; (>= 7.10.6)
+(if "LIBCURL_VERSION_NUM >= 0x070a06"
+    (begin
+      (define-enum CURLAUTH_NONE)
+      (define-enum CURLAUTH_BASIC)
+      (define-enum CURLAUTH_DIGEST)
+      (define-enum CURLAUTH_GSSNEGOTIATE)
+      (define-enum CURLAUTH_NTLM)
+      (define-enum CURLAUTH_ANY)
+      (define-enum CURLAUTH_ANYSAFE)))
+;; (>= 7.19.3)
+(if "LIBCURL_VERSION_NUM >= 0x071303"
+    (define-enum CURLAUTH_DIGEST_IE))
+;; (>= 7.16.1)
+(if "LIBCURL_VERSION_NUM >= 0x071001"
+    (begin
+      (define-enum CURLSSH_AUTH_ANY)
+      (define-enum CURLSSH_AUTH_NONE)
+      (define-enum CURLSSH_AUTH_PUBLICKEY)
+      (define-enum CURLSSH_AUTH_PASSWORD)
+      (define-enum CURLSSH_AUTH_HOST)
+      (define-enum CURLSSH_AUTH_KEYBOARD)
+      (define-enum CURLSSH_AUTH_DEFAULT)))
+;; (>= 7.12.2)
+(if "LIBCURL_VERSION_NUM >= 0x070c02"
+    (begin
+      (define-enum CURLFTPAUTH_DEFAULT)
+      (define-enum CURLFTPAUTH_SSL)
+      (define-enum CURLFTPAUTH_TLS)
+      (define-enum CURLFTPAUTH_LAST)))
 
 ;; symbols to use with CURLOPT_POSTREDIR
-(define-enum CURL_REDIR_GET_ALL)
-(define-enum CURL_REDIR_POST_301)
-(define-enum CURL_REDIR_POST_302)
-(define-enum CURL_REDIR_POST_ALL)
+;; (>= 7.17.1)
+(if "LIBCURL_VERSION_NUM >= 0x071101"
+    (begin
+      (define-enum CURL_REDIR_GET_ALL)
+      (define-enum CURL_REDIR_POST_301)
+      (define-enum CURL_REDIR_POST_302)
+      (define-enum CURL_REDIR_POST_ALL)))
 
 ;; CURLMcode
 (define-enum CURLM_CALL_MULTI_PERFORM)
@@ -732,14 +756,6 @@
 (define-enum CURL_IPRESOLVE_WHATEVER)
 (define-enum CURL_IPRESOLVE_V4)
 (define-enum CURL_IPRESOLVE_V6)
-
-;; SSH auth type
-(define-enum CURLSSH_AUTH_PUBLICKEY)
-(define-enum CURLSSH_AUTH_PASSWORD)
-(define-enum CURLSSH_AUTH_HOST)
-(define-enum CURLSSH_AUTH_KEYBOARD)
-(define-enum CURLSSH_AUTH_ANY)
-(define-enum CURLSSH_AUTH_DEFAULT)
 
 ;; curl ftp method
 ;; (>= 7.15.1)

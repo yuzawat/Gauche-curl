@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2009/07/08 11:59.32"
+;;; Last Updated: "2009/08/03 15:17.23"
 ;;;
 ;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
 
@@ -67,6 +67,7 @@
 
    curl-open-file
    curl-open-port
+   curl-close-file
 
    list->curl-slist
    curl-slist->list
@@ -1063,7 +1064,7 @@
 	  ,(if (vc "7.18.2") (cons 'REDIRECT_URL (_ hnd CURLINFO_REDIRECT_URL)) #f)
 	  ,(if (vc "7.19.0") (cons 'PRIMARY_IP (_ hnd CURLINFO_PRIMARY_IP)) #f)
 	  ,(if (vc "7.19.0") (cons 'APPCONNECT_TIME (_ hnd CURLINFO_APPCONNECT_TIME)) #f)
-	  ,(if (vc "7.19.1") (cons 'CERTINFO (_ hnd CURLINFO_CERTINFO)) #f)
+	  ,(if (and (vc "7.19.1") (fc "SSL")) (cons 'CERTINFO (_ hnd CURLINFO_CERTINFO)) #f)
 	  ,(if (vc "7.19.4") (cons 'CONDITION_UNMET (_ hnd CURLINFO_CONDITION_UNMET)) #f)))
     (error <curl-error> :message "curl handler is invalid."))))
 
