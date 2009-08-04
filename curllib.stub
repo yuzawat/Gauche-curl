@@ -1,7 +1,7 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;; curllib.stub
 ;;; 
-;;; Last Updated: "2009/08/03 19:34.51"
+;;; Last Updated: "2009/08/04 20:24.14"
 ;;;
 ;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
 
@@ -428,7 +428,7 @@
 ;; (>= 7.17.1)
 (if "LIBCURL_VERSION_NUM >= 0x071101"
     (begin
-      (define-enum CURLOPT_POSTREDIR)
+      (define-enum CURLOPT_POST301)
       (define-enum CURLOPT_SSH_HOST_PUBLIC_KEY_MD5)
       (define-enum CURLOPT_OPENSOCKETFUNCTION)
       (define-enum CURLOPT_OPENSOCKETDATA)
@@ -442,6 +442,7 @@
 ;; (>= 7.19.0)
 (if "LIBCURL_VERSION_NUM >= 0x071300"
     (begin
+      (define-enum CURLOPT_POSTREDIR)
       (define-enum CURLOPT_CRLFILE)
       (define-enum CURLOPT_ISSUERCERT)
       (define-enum CURLOPT_ADDRESS_SCOPE)))
@@ -658,8 +659,8 @@
       (define-enum CURLFTPAUTH_LAST)))
 
 ;; symbols to use with CURLOPT_POSTREDIR
-;; (>= 7.17.1)
-(if "LIBCURL_VERSION_NUM >= 0x071101"
+;; (>= 7.19.0)
+(if "LIBCURL_VERSION_NUM >= 0x071300"
     (begin
       (define-enum CURL_REDIR_GET_ALL)
       (define-enum CURL_REDIR_POST_301)

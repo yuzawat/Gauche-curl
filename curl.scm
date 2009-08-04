@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2009/08/03 15:17.23"
+;;; Last Updated: "2009/08/04 20:27.42"
 ;;;
 ;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
 
@@ -317,6 +317,7 @@
    CURLOPT_HTTP_CONTENT_DECODING
    CURLOPT_NEW_FILE_PERMS
    CURLOPT_NEW_DIRECTORY_PERMS
+   CURLOPT_POST301
    CURLOPT_POSTREDIR
    CURLOPT_SSH_HOST_PUBLIC_KEY_MD5
    CURLOPT_OPENSOCKETFUNCTION
@@ -705,7 +706,10 @@
       (when get (_ curl CURLOPT_HTTPGET 1))
       (when header (_ curl CURLOPT_HTTPHEADER (string-split header #\,)))
       (if head (_ curl CURLOPT_NOBODY 1) (_ curl CURLOPT_NOBODY 0))
-      (when post301 (_ curl CURLOPT_POSTREDIR CURL_REDIR_POST_301))
+      (when post301 
+	(if (vc "7.19.0")
+	    (_ curl CURLOPT_POSTREDIR CURL_REDIR_POST_301)
+	    (_ curl CURLOPT_POST301)))
       (when post302 (_ curl CURLOPT_POSTREDIR CURL_REDIR_POST_302))
       (when http1.0 (_ curl CURLOPT_HTTP_VERSION CURL_HTTP_VERSION_1_0))
       (when (vc "7.16.2")

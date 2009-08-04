@@ -1,3 +1,9 @@
+2009-08-04  yuzawat  <suzdalenator@gmail.com>
+
+	* curllib.stub
+	* curl.scm
+	fix libcurl version with CURLOPT_POSTREDIR 
+	
 2009-08-03  yuzawat  <suzdalenator@gmail.com>
 
 	* release 0.1.2
