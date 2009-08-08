@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2009/08/04 20:27.42"
+;;; Last Updated: "2009/08/08 21:46.45"
 ;;;
 ;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
 
@@ -103,14 +103,17 @@
    CURLE_COULDNT_RESOLVE_HOST
    CURLE_COULDNT_CONNECT
    CURLE_FTP_WEIRD_SERVER_REPLY
+   CURLE_FTP_ACCESS_DENIED
    CURLE_REMOTE_ACCESS_DENIED
    CURLE_FTP_WEIRD_PASS_REPLY
    CURLE_FTP_WEIRD_PASV_REPLY
    CURLE_FTP_WEIRD_227_FORMAT
    CURLE_FTP_CANT_GET_HOST
+   CURLE_FTP_COULDNT_SET_BINARY
    CURLE_FTP_COULDNT_SET_TYPE
    CURLE_PARTIAL_FILE
    CURLE_FTP_COULDNT_RETR_FILE
+   CURLE_FTP_QUOTE_ERROR
    CURLE_QUOTE_ERROR
    CURLE_HTTP_RETURNED_ERROR
    CURLE_WRITE_ERROR
@@ -120,6 +123,7 @@
    CURLE_OPERATION_TIMEDOUT
    CURLE_FTP_PORT_FAILED
    CURLE_FTP_COULDNT_USE_REST
+   CURLE_HTTP_RANGE_ERROR
    CURLE_RANGE_ERROR
    CURLE_HTTP_POST_ERROR
    CURLE_SSL_CONNECT_ERROR
@@ -152,9 +156,11 @@
    CURLE_LOGIN_DENIED
    CURLE_TFTP_NOTFOUND
    CURLE_TFTP_PERM
+   CURLE_TFTP_DISKFULL
    CURLE_REMOTE_DISK_FULL
    CURLE_TFTP_ILLEGAL
    CURLE_TFTP_UNKNOWNID
+   CURLE_TFTP_EXISTS
    CURLE_REMOTE_FILE_EXISTS
    CURLE_TFTP_NOSUCHUSER
    CURLE_CONV_FAILED
@@ -199,6 +205,8 @@
    CURLOPT_HTTPHEADER
    CURLOPT_HTTPPOST
    CURLOPT_SSLCERT
+   CURLOPT_SSLCERTPASSWD
+   CURLOPT_SSLKEYPASSWD
    CURLOPT_KEYPASSWD
    CURLOPT_CRLF
    CURLOPT_QUOTE
@@ -218,6 +226,8 @@
    CURLOPT_FAILONERROR
    CURLOPT_UPLOAD
    CURLOPT_POST
+   CURLOPT_FTPLISTONLY
+   CURLOPT_FTPAPPEND
    CURLOPT_DIRLISTONLY
    CURLOPT_APPEND
    CURLOPT_NETRC
@@ -231,6 +241,7 @@
    CURLOPT_POSTFIELDSIZE
    CURLOPT_HTTPPROXYTUNNEL
    CURLOPT_INTERFACE
+   CURLOPT_KRB4LEVEL
    CURLOPT_KRBLEVEL
    CURLOPT_SSL_VERIFYPEER
    CURLOPT_CAINFO
@@ -284,6 +295,7 @@
    CURLOPT_RESUME_FROM_LARGE
    CURLOPT_MAXFILESIZE_LARGE
    CURLOPT_NETRC_FILE
+   CURLOPT_FTP_SSL
    CURLOPT_USE_SSL
    CURLOPT_POSTFIELDSIZE_LARGE
    CURLOPT_TCP_NODELAY
@@ -441,6 +453,10 @@
    CURLFTPMETHOD_SINGLECWD
 
    ;; FTP use SSL option 
+   CURLFTPSSL_NONE
+   CURLFTPSSL_TRY
+   CURLFTPSSL_CONTROL
+   CURLFTPSSL_ALL
    CURLUSESSL_NONE
    CURLUSESSL_TRY
    CURLUSESSL_CONTROL
@@ -792,7 +808,7 @@
 		(_ curl CURLOPT_PROXY #f)))
 	  (if socks5-gssapi-nec (_ curl CURLOPT_PROXYTYPE 1) (_ curl CURLOPT_PROXYTYPE 0))
 	  (when socks5-gssapi-service (_ curl CURLOPT_SOCKS5_GSSAPI_SERVICE socks5-gssapi-service))
-	  (if noproxy (_ curl CURLOPT_NOPROXY noproxy) (_ curl CURLOPT_NOPROXY #f)))
+	  (if noproxy (_ curl CURLOPT_NOPROXY noproxy) (_ curl CURLOPT_NOPROXY #f))))
       (if proxy-user (_ curl CURLOPT_PROXYUSERPWD proxy-user) (_ curl CURLOPT_PROXYUSERPWD #f))
       (when proxy-anyauth (_ curl CURLOPT_PROXYAUTH CURLAUTH_ANY))
       (when proxy-basic (_ curl CURLOPT_PROXYAUTH CURLAUTH_BASIC))
@@ -892,15 +908,26 @@
 		   => (lambda (m) 
 			(begin
 			  (_ curl CURLOPT_SSLKEY (m 1))
-			  (_ curl CURLOPT_KEYPASSWD (m 2)))))
+			  (cond 
+			   ((vc "7.16.5") (_ CURLOPT_KEYPASSWD (m 2)))
+			   ((vc "7.9.3") (_ CURLOPT_SSLKEYPASSWD (m 2)))
+			   (else (_ CURLOPT_CERTKEYPASSWD (m 2)))))))
 		  (else (_ curl CURLOPT_SSLKEY cert))))
-	  (when key (_ curl CURLOPT_KEYPASSWD key))
+	  (when key 
+	    (cond 
+	     ((vc "7.16.5") (_ CURLOPT_KEYPASSWD key))
+	     ((vc "7.9.3") (_ CURLOPT_SSLKEYPASSWD key))
+	     (else (_ CURLOPT_CERTKEYPASSWD key))))
+	  (when pass 
+	    (cond 
+	     ((vc "7.16.5") (_ CURLOPT_KEYPASSWD pass))
+	     ((vc "7.9.3") (_ CURLOPT_SSLKEYPASSWD pass))
+	     (else (_ CURLOPT_CERTKEYPASSWD pass))))
 	  (when key-type 
 	    (cond ((equal? key-type "PEM") (_ curl CURLOPT_SSLKEYTYPE key-type))
 		  ((equal? key-type "DER") (_ curl CURLOPT_SSLKEYTYPE key-type))
 		  ((equal? key-type "ENG") (_ curl CURLOPT_SSLKEYTYPE key-type))
 		  (else (error <curl-error> :message "SSL private key type is invalid."))))
-	  (when pass (_ curl CURLOPT_KEYPASSWD pass))
 	  (when insecure (_ curl CURLOPT_SSL_VERIFYHOST 0))))
       ;; SSH
       (when (pc "scp")
@@ -909,15 +936,20 @@
 	  (when key (_ curl CURLOPT_SSH_PRIVATE_KEYFILE key))
 	  (when pubkey (_ curl CURLOPT_SSH_PUBLIC_KEYFILE pubkey))
 	  (when hostpubmd5 (_ curl CURLOPT_SSH_HOST_PUBLIC_KEY_MD5 hostpubmd5))
-	  (when pass (_ CURLOPT_KEYPASSWD pass))))
+	  (when pass (cond 
+		      ((vc "7.16.5") (_ CURLOPT_KEYPASSWD pass))
+		      ((vc "7.9.3") (_ CURLOPT_SSLKEYPASSWD pass))
+		      (else (_ CURLOPT_CERTKEYPASSWD pass))))))
       ;; FTP
       (when (pc "ftp")
 	(begin
 	  (if ftp-port (_ curl CURLOPT_FTPPORT ftp-port) (_ curl CURLOPT_FTPPORT #f))
 	  (when ftp-pasv (_ curl CURLOPT_FTPPORT #f))
 	  (when quote (_ curl CURLOPT_QUOTE (list->curl-slist (string-split quote #\,))))
-	  (when list-only (_ curl CURLOPT_DIRLISTONLY 1))
-	  (when append (_ curl CURLOPT_APPEND 1))
+	  (when list-only 
+	    (when (vc "7.16.5") (_ curl CURLOPT_DIRLISTONLY 1) (_ curl CURLOPT_FTPLISTONLY 1)))
+	  (when append 
+	    (when (vc "7.16.5")  (_ curl CURLOPT_APPEND 1) (_ curl CURLOPT_FTPAPPEND 1)))
 	  (when use-ascii (_ curl CURLOPT_TRANSFERTEXT 1))
 	  (cond ((#/^(.+)\;type\=A$/ (url-of curl)) 
 		 => (lambda (m) 
@@ -944,23 +976,31 @@
 		    ((equal? ftp-method "singlecwd") (_ curl CURLOPT_FTP_FILEMETHOD CURLFTPMETHOD_SINGLECWD))
 		    (else (error <curl-error> :message "ftp method is invalid.")))))
 	  (when (vc "7.15.5") (when ftp-alternative-to-user (_ curl CURLOPT_FTP_ALTERNATIVE_TO_USER ftp-alternative-to-user)))
-	  (when (fc "GSS-Negotiate") (when krb (_ curl CURLOPT_KRBLEVEL krb)))
+	  (when (fc "GSS-Negotiate") (when krb 
+				       (when (vc "7.16.4") (_ curl CURLOPT_KRBLEVEL krb)
+					     (_ curl CURLOPT_KRB4LEVEL krb))))
 	  (when (pc "ftps")
-	    (begin
-	      (when ftp-ssl (_ curl CURLOPT_USE_SSL CURLUSESSL_TRY))
-	      (when ftp-ssl-control (_ curl CURLOPT_USE_SSL CURLUSESSL_CONTROL))
-	      (when ftp-ssl-reqd (_ curl CURLOPT_USE_SSL CURLUSESSL_ALL))
+	    (when (vc "7.16.5")
+	      (begin
+		(when ftp-ssl (_ curl CURLOPT_USE_SSL CURLUSESSL_TRY))
+		(when ftp-ssl-control (_ curl CURLOPT_USE_SSL CURLUSESSL_CONTROL))
+		(when ftp-ssl-reqd (_ curl CURLOPT_USE_SSL CURLUSESSL_ALL)))
+	      (begin
+		(when ftp-ssl (_ curl CURLOPT_FTP_SSL CURLFTPSSL_TRY))
+		(when ftp-ssl-control (_ curl CURLOPT_FTP_SSL CURLFTPSSL_CONTROL))
+		(when ftp-ssl-reqd (_ curl CURLOPT_FTP_SSL CURLFTPSSL_ALL))))
 	      (when ftp-ssl-ccc (_ curl CURLOPT_FTP_SSL_CCC CURLFTPSSL_CCC_PASSIVE))
 	      (when ftp-ssl-ccc-mode
 		(cond ((equal? ftp-ssl-ccc-mode "active") (_ curl CURLOPT_FTP_SSL_CCC CURLFTPSSL_CCC_ACTIVE))
 		      ((equal? ftp-ssl-ccc-mode "passive") (_ curl CURLOPT_FTP_SSL_CCC CURLFTPSSL_CCC_PASSIVE))
-		      (else (error <curl-error> :message "ftp ssl ccc mode is invalid."))))))))
+		      (else (error <curl-error> :message "ftp ssl ccc mode is invalid.")))))))
       ;; LDAP
       (when (pc "ldap")
 	(when use-ascii (_ curl CURLOPT_TRANSFERTEXT) 1))
       ;; telnet
       (when (pc "telnet")
-	(when telnet-option (_ curl CURLOPT_TELNETOPTIONS (list->curl-slist (string-split telnet-option #\,)))))))))
+	(when telnet-option (_ curl CURLOPT_TELNETOPTIONS (list->curl-slist (string-split telnet-option #\,))))))))
+
 
 ;; fflush
 ;;        (buffer "buffer" #f)
@@ -1068,7 +1108,8 @@
 	  ,(if (vc "7.18.2") (cons 'REDIRECT_URL (_ hnd CURLINFO_REDIRECT_URL)) #f)
 	  ,(if (vc "7.19.0") (cons 'PRIMARY_IP (_ hnd CURLINFO_PRIMARY_IP)) #f)
 	  ,(if (vc "7.19.0") (cons 'APPCONNECT_TIME (_ hnd CURLINFO_APPCONNECT_TIME)) #f)
-	  ,(if (and (vc "7.19.1") (fc "SSL")) (cons 'CERTINFO (_ hnd CURLINFO_CERTINFO)) #f)
+	  ;; FIXME: must be support struct curl_certinfo
+	  ;,(if (and (vc "7.19.1") (fc "SSL")) (cons 'CERTINFO (_ hnd CURLINFO_CERTINFO)) #f)
 	  ,(if (vc "7.19.4") (cons 'CONDITION_UNMET (_ hnd CURLINFO_CONDITION_UNMET)) #f)))
     (error <curl-error> :message "curl handler is invalid."))))
 

@@ -227,6 +227,7 @@ Todo
 - データアップロード関連の十分なテスト
 - 未実装部分たくさん
 - test.scmをもう少しましに
+- curl-getinfo で、curl_certinfo をサポートする。
 
 制限事項
 - multi interface（複数のハンドラーをまとめて操作する）が未実装です。
@@ -291,5 +292,12 @@ Todo
  -z|--time-cond
  --keepalive-time
 
+
+動作確認環境（と云っても、"make check"が通るだけ）
+- Mac OX X 10.5.8 (libcurl 7.16.3 + Gauche 0.8.14)
+- Mac OX X 10.5.8 (libcurl 7.19.3 + Gauche 0.8.14)
+- Ubuntu 9.04 Jaunty (libcurl 7.18.2 + Gauche 0.8.13)
+- Debian GNU/Linux squeeze/sid (libcurl 7.19.4 + Gauche 0.8.13)
+- FreeBSD 7.1-RELEASE-p6 (libcurl 7.19.4 + Gauche 0.8.14)
 
 以上

@@ -15,8 +15,8 @@
 (test-section "curl version check")
 (test* "curl-version" #t
        (regmatch? (#/^libcurl/  (curl-version))))
-(test* "curl-version-info: version is over 7.18.x" #t
-       (regmatch? (#/7\.1[89]\./ (cdr (assoc "version" (curl-version-info))))))
+(test* "curl-version-info: version is over 7.x.x" #t
+       (regmatch? (#/7\.\d+\./ (cdr (assoc "version" (curl-version-info))))))
 (test* "curl-version-info: support http" #t
        (regmatch? (#/\bhttp\b/ (cdr (assoc "protocols" (curl-version-info))))))
 

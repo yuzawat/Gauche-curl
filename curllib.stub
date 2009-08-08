@@ -1,7 +1,7 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;; curllib.stub
 ;;; 
-;;; Last Updated: "2009/08/04 20:24.14"
+;;; Last Updated: "2009/08/08 21:01.12"
 ;;;
 ;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
 
@@ -121,10 +121,6 @@
   (body <curl-base>
 	"SCM_RESULT = curl_easy_duphandle(hnd);"))
 
-(define-cproc curl-easy-pause (hnd::<curl-base> bitmask::<int>)
-  (body <int>
-	"SCM_RESULT = curl_easy_pause(hnd, SCM_INT_VALUE(bitmask));"))
-
 (define-cproc curl-easy-perform (hnd::<curl-base>)
   (call <int>
 	"curl_easy_perform(hnd);"))
@@ -174,15 +170,23 @@
 	"time_t now = time(NULL);"
 	"SCM_RESULT = curl_getdate(str, &now);"))
 
-; sends raw data over an "easy" connection
-(define-cproc curl-easy-send (hnd::<curl-base> str::<const-cstring> length::<int> size::<int>)
-  (body <int>
-	"SCM_RESULT = curl_easy_send(hnd, str, (size_t)length, (size_t*)size);"))
+;; (>= 7.18.0)
+(if "LIBCURL_VERSION_NUM >= 0x071200"
+    (define-cproc curl-easy-pause (hnd::<curl-base> bitmask::<int>)
+      (body <int>
+	    "SCM_RESULT = curl_easy_pause(hnd, SCM_INT_VALUE(bitmask));")))
 
-; receives raw data on an "easy" connection
-(define-cproc curl-easy-recv (hnd::<curl-base> str::<string> length::<int> size::<int>)
-  (body <int>
-	"SCM_RESULT = curl_easy_recv(hnd, str, (size_t)length, (size_t*)size);"))
+;; (>= 7.18.2)
+(if "LIBCURL_VERSION_NUM >= 0x071202"
+    (begin
+      ; sends raw data over an "easy" connection
+      (define-cproc curl-easy-send (hnd::<curl-base> str::<const-cstring> length::<int> size::<int>)
+	(body <int>
+	      "SCM_RESULT = curl_easy_send(hnd, str, (size_t)length, (size_t*)size);"))
+      ; receives raw data on an "easy" connection
+      (define-cproc curl-easy-recv (hnd::<curl-base> str::<string> length::<int> size::<int>)
+	(body <int>
+	      "SCM_RESULT = curl_easy_recv(hnd, str, (size_t)length, (size_t*)size);"))))
 
 ; returns the libcurl version string
 (define-cproc curl-version ()
@@ -257,7 +261,7 @@
 (define-enum CURLOPT_HTTPHEADER)
 (define-enum CURLOPT_HTTPPOST)
 (define-enum CURLOPT_SSLCERT)
-(define-enum CURLOPT_KEYPASSWD)
+(define-enum CURLOPT_SSLCERTPASSWD)
 (define-enum CURLOPT_CRLF)
 (define-enum CURLOPT_QUOTE)
 (define-enum CURLOPT_WRITEHEADER)
@@ -276,8 +280,8 @@
 (define-enum CURLOPT_FAILONERROR)
 (define-enum CURLOPT_UPLOAD)
 (define-enum CURLOPT_POST)
-(define-enum CURLOPT_DIRLISTONLY)
-(define-enum CURLOPT_APPEND)
+(define-enum CURLOPT_FTPLISTONLY)
+(define-enum CURLOPT_FTPAPPEND)
 (define-enum CURLOPT_NETRC)
 (define-enum CURLOPT_FOLLOWLOCATION)
 (define-enum CURLOPT_TRANSFERTEXT)
@@ -289,7 +293,7 @@
 (define-enum CURLOPT_POSTFIELDSIZE)
 (define-enum CURLOPT_HTTPPROXYTUNNEL)
 (define-enum CURLOPT_INTERFACE)
-(define-enum CURLOPT_KRBLEVEL)
+(define-enum CURLOPT_KRB4LEVEL)
 (define-enum CURLOPT_SSL_VERIFYPEER)
 (define-enum CURLOPT_CAINFO)
 (define-enum CURLOPT_MAXREDIRS)
@@ -331,7 +335,9 @@
 (define-enum CURLOPT_MAXFILESIZE)
 ;; (>= 7.9.3)
 (if "LIBCURL_VERSION_NUM >= 0x070903"
-    (define-enum CURLOPT_SSLCERTTYPE))
+    (begin
+      (define-enum CURLOPT_SSLKEYPASSWD)
+      (define-enum CURLOPT_SSLCERTTYPE)))
 ;; (>= 7.10.0)
 (if "LIBCURL_VERSION_NUM >= 0x070a00"
 (begin
@@ -356,8 +362,10 @@
       (define-enum CURLOPT_RESUME_FROM_LARGE)
       (define-enum CURLOPT_MAXFILESIZE_LARGE)
       (define-enum CURLOPT_SSL_CTX_FUNCTION)
-      (define-enum CURLOPT_SSL_CTX_DATA)
-      (define-enum CURLOPT_USE_SSL)))
+      (define-enum CURLOPT_SSL_CTX_DATA)))
+;; (>= 7.11.0)
+(if "LIBCURL_VERSION_NUM >= 0x070b00"
+    (define-enum CURLOPT_FTP_SSL))
 ;; (>= 7.11.1)
 (if "LIBCURL_VERSION_NUM >= 0x070b01"
     (begin
@@ -423,8 +431,16 @@
 ;; (>= 7.16.4)
 (if "LIBCURL_VERSION_NUM >= 0x071004"
     (begin
+      (define-enum CURLOPT_KRBLEVEL)
       (define-enum CURLOPT_NEW_FILE_PERMS)
       (define-enum CURLOPT_NEW_DIRECTORY_PERMS)))
+;; (>= 7.16.5)
+(if "LIBCURL_VERSION_NUM >= 0x071005"
+    (begin
+      (define-enum CURLOPT_KEYPASSWD)   
+      (define-enum CURLOPT_DIRLISTONLY)
+      (define-enum CURLOPT_APPEND)
+      (define-enum CURLOPT_USE_SSL)))
 ;; (>= 7.17.1)
 (if "LIBCURL_VERSION_NUM >= 0x071101"
     (begin
@@ -475,15 +491,15 @@
 (define-enum CURLE_COULDNT_RESOLVE_HOST)
 (define-enum CURLE_COULDNT_CONNECT)
 (define-enum CURLE_FTP_WEIRD_SERVER_REPLY)
-(define-enum CURLE_REMOTE_ACCESS_DENIED)
+(define-enum CURLE_FTP_ACCESS_DENIED)
 (define-enum CURLE_FTP_WEIRD_PASS_REPLY)
 (define-enum CURLE_FTP_WEIRD_PASV_REPLY)
 (define-enum CURLE_FTP_WEIRD_227_FORMAT)
+(define-enum CURLE_FTP_COULDNT_SET_BINARY)
 (define-enum CURLE_FTP_CANT_GET_HOST)
-(define-enum CURLE_FTP_COULDNT_SET_TYPE)
 (define-enum CURLE_PARTIAL_FILE)
 (define-enum CURLE_FTP_COULDNT_RETR_FILE)
-(define-enum CURLE_QUOTE_ERROR)
+(define-enum CURLE_FTP_QUOTE_ERROR)
 (define-enum CURLE_HTTP_RETURNED_ERROR)
 (define-enum CURLE_WRITE_ERROR)
 (define-enum CURLE_UPLOAD_FAILED)
@@ -492,7 +508,7 @@
 (define-enum CURLE_OPERATION_TIMEDOUT)
 (define-enum CURLE_FTP_PORT_FAILED)
 (define-enum CURLE_FTP_COULDNT_USE_REST)
-(define-enum CURLE_RANGE_ERROR)
+(define-enum CURLE_HTTP_RANGE_ERROR)
 (define-enum CURLE_HTTP_POST_ERROR)
 (define-enum CURLE_SSL_CONNECT_ERROR)
 (define-enum CURLE_BAD_DOWNLOAD_RESUME)
@@ -506,7 +522,6 @@
 (define-enum CURLE_TOO_MANY_REDIRECTS)
 (define-enum CURLE_UNKNOWN_TELNET_OPTION)
 (define-enum CURLE_TELNET_OPTION_SYNTAX)
-(define-enum CURLE_PEER_FAILED_VERIFICATION)
 (define-enum CURLE_GOT_NOTHING)
 (define-enum CURLE_SSL_ENGINE_NOTFOUND)
 (define-enum CURLE_SSL_ENGINE_SETFAILED)
@@ -518,15 +533,15 @@
 (define-enum CURLE_BAD_CONTENT_ENCODING)
 (define-enum CURLE_LDAP_INVALID_URL)
 (define-enum CURLE_FILESIZE_EXCEEDED)
-(define-enum CURLE_USE_SSL_FAILED)
+(define-enum CURLE_FTP_SSL_FAILED)
 (define-enum CURLE_SEND_FAIL_REWIND)
 (define-enum CURLE_SSL_ENGINE_INITFAILED)
 (define-enum CURLE_TFTP_NOTFOUND)
 (define-enum CURLE_TFTP_PERM)
-(define-enum CURLE_REMOTE_DISK_FULL)
+(define-enum CURLE_TFTP_DISKFULL)
 (define-enum CURLE_TFTP_ILLEGAL)
 (define-enum CURLE_TFTP_UNKNOWNID)
-(define-enum CURLE_REMOTE_FILE_EXISTS)
+(define-enum CURLE_TFTP_EXISTS)
 (define-enum CURLE_TFTP_NOSUCHUSER)
 (define-enum CURLE_CONV_FAILED)
 (define-enum CURLE_CONV_REQD)
@@ -534,9 +549,28 @@
 (define-enum CURLE_REMOTE_FILE_NOT_FOUND)
 (define-enum CURLE_SSH)
 (define-enum CURLE_SSL_SHUTDOWN_FAILED)
+;; (>= 7.7.3)
+(if "LIBCURL_VERSION_NUM >= 0x070703"
+    (define-enum CURLE_SSL_PEER_CERTIFICATE))
 ;; (>= 7.13.1)
 (if "LIBCURL_VERSION_NUM >= 0x070d01"
     (define-enum CURLE_LOGIN_DENIED))
+;; (>= 7.17.0)
+(if "LIBCURL_VERSION_NUM >= 0x071100"
+    (begin
+      (define-enum CURLE_FTP_COULDNT_SET_TYPE)
+      (define-enum CURLE_REMOTE_ACCESS_DENIED)
+      (define-enum CURLE_QUOTE_ERROR)
+      (define-enum CURLE_RANGE_ERROR)))
+;; (>= 7.17.1)
+(if "LIBCURL_VERSION_NUM >= 0x071101"
+    (begin
+      (define-enum CURLE_REMOTE_DISK_FULL)
+      (define-enum CURLE_REMOTE_FILE_EXISTS)
+      (define-enum CURLE_PEER_FAILED_VERIFICATION)))
+;; (>= 7.17.9)
+(if "LIBCURL_VERSION_NUM >= 0x071109"
+    (define-enum CURLE_USE_SSL_FAILED))
 ;; (>= 7.18.2)
 (if "LIBCURL_VERSION_NUM >= 0x071202"
     (define-enum CURLE_AGAIN))
@@ -715,12 +749,15 @@
 (define-enum CURL_LOCK_DATA_LAST)
 
 ;; pause bitmask
-(define-enum CURLPAUSE_RECV)
-(define-enum CURLPAUSE_RECV_CONT)
-(define-enum CURLPAUSE_SEND)
-(define-enum CURLPAUSE_SEND_CONT)
-(define-enum CURLPAUSE_ALL)
-(define-enum CURLPAUSE_CONT)  
+;; (>= 7.18.2)
+(if "LIBCURL_VERSION_NUM >= 0x071202"
+    (begin
+      (define-enum CURLPAUSE_RECV)
+      (define-enum CURLPAUSE_SEND)
+      (define-enum CURLPAUSE_ALL)
+      (define-enum CURLPAUSE_CONT)  
+      (define-enum CURLPAUSE_RECV_CONT)
+      (define-enum CURLPAUSE_SEND_CONT)))
 
 ;;cURL version
 (define-enum CURLVERSION_FIRST)
@@ -769,6 +806,13 @@
 ;; CURLOPT_USE_SSL option
 ; (>= 7.11.0)
 (if "LIBCURL_VERSION_NUM >= 0x070b00"
+    (begin 
+      (define-enum CURLFTPSSL_NONE)
+      (define-enum CURLFTPSSL_TRY)
+      (define-enum CURLFTPSSL_CONTROL)
+      (define-enum CURLFTPSSL_ALL)))
+; (>= 7.16.4)
+(if "LIBCURL_VERSION_NUM >= 0x071004"
     (begin 
       (define-enum CURLUSESSL_NONE)
       (define-enum CURLUSESSL_TRY)

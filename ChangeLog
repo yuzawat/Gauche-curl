@@ -1,3 +1,10 @@
+2009-08-08  yuzawat  <suzdalenator@gmail.com>
+
+	* curllib.stub
+	* curl.scm
+	* test.scm
+	fix libcurl version check
+
 2009-08-04  yuzawat  <suzdalenator@gmail.com>
 
 	* curllib.stub
