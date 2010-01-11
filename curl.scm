@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2009/08/08 21:46.45"
+;;; Last Updated: "2010/01/10 00:12.21"
 ;;;
 ;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
 
@@ -57,6 +57,7 @@
    curl-multi-cleanup
    curl-multi-add-handle
    curl-multi-remove-handle
+   curl-multi-perform
 
    curl-share-init
    curl-share-setopt
@@ -346,6 +347,9 @@
    CURLOPT_PASSWORD
    CURLOPT_PROXYUSERNAME
    CURLOPT_PROXYPASSWORD
+   CURLOPT_SSH_KNOWNHOSTS
+   CURLOPT_SSH_KEYFUNCTION
+   CURLOPT_SSH_KEYDATA
 
    ;; curl information code
    CURLINFO_NONE
@@ -657,6 +661,7 @@
 	 (pass "pass=s" #f)
 	 (insecure "k|insecure" #f)
 	 (pubkey "pubkey=s" #f)
+	 (crlfile "crlfile=s" #f)
 	 (hostpubmd5 "hostpubmd5=s" #f)
 	 (ftp-port "P|ftp-port=s" #f)
 	 (ftp-pasv "ftp-pasv" #f)
@@ -928,7 +933,8 @@
 		  ((equal? key-type "DER") (_ curl CURLOPT_SSLKEYTYPE key-type))
 		  ((equal? key-type "ENG") (_ curl CURLOPT_SSLKEYTYPE key-type))
 		  (else (error <curl-error> :message "SSL private key type is invalid."))))
-	  (when insecure (_ curl CURLOPT_SSL_VERIFYHOST 0))))
+	  (when insecure (_ curl CURLOPT_SSL_VERIFYHOST 0))
+	  (when (vc "7.17.7") (when crlfile (_ curl CURLOPT_CRLFILE crlfile)))))
       ;; SSH
       (when (pc "scp")
 	(begin
@@ -940,6 +946,10 @@
 		      ((vc "7.16.5") (_ CURLOPT_KEYPASSWD pass))
 		      ((vc "7.9.3") (_ CURLOPT_SSLKEYPASSWD pass))
 		      (else (_ CURLOPT_CERTKEYPASSWD pass))))))
+;; (vc "7.19.6")
+;; (_ CURLOPT_SSH_KNOWNHOSTS 
+;; (_ CURLOPT_SSH_KEYFUNCTION)
+;; (_ CURLOPT_SSH_KEYDATA)
       ;; FTP
       (when (pc "ftp")
 	(begin
@@ -1148,7 +1158,7 @@
 (define-method curl-open-input-file ((curl <curl>) filename)
   (let1 hnd (handler-of curl)
     (if hnd
-	(begin 
+	(begin0 
 	  (curl-open-file hnd CURLOPT_READDATA filename)
 	  (curl-setopt! curl CURLOPT_POSTFIELDS #f)
 	  (if (fc "Largefile")
@@ -1181,7 +1191,7 @@
 (define-method curl-open-input-port ((curl <curl>) in)
   (let1 hnd (handler-of curl)
     (if hnd
-	(begin
+	(begin0
 	  (curl-open-port hnd CURLOPT_READDATA
 			  (if (input-port? in) in
 			      (else (error <curl-error> :message "Set input port."))))

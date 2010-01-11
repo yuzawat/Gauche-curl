@@ -1,7 +1,7 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;; curllib.stub
 ;;; 
-;;; Last Updated: "2009/08/08 21:01.12"
+;;; Last Updated: "2010/01/10 00:33.47"
 ;;;
 ;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
 
@@ -58,16 +58,6 @@
 (define-cproc curl-multi-cleanup (mhnd::<curl-multi-base>)
   (call <int>
 	"curl_multi_cleanup(mhnd);"))
-
-;; add a standard curl handle to the multi stack
-(define-cproc curl-multi-add-handle (mhnd::<curl-multi-base> hnd::<curl-base>)
-  (body <int>
-	"SCM_RESULT = curl_multi_add_handle(mhnd, hnd);"))
-
-;; removes a curl handle from the multi stack again
-(define-cproc curl-multi-remove-handle (mhnd::<curl-multi-base> hnd::<curl-base>)
-  (body <int>
-	"SCM_RESULT = curl_multi_remove_handle(mhnd, hnd);"))
 
 ;; initialize share handle
 (define-cproc curl-share-init ()
@@ -195,6 +185,23 @@
 ; returns run-time libcurl version info
 (define-cproc curl-version-info ()
   (call <list> "curl_version_info_list"))
+
+;; add a standard curl handle to the multi stack
+(define-cproc curl-multi-add-handle (mhnd::<curl-multi-base> hnd::<curl-base>)
+  (body <int>
+	"SCM_RESULT = curl_multi_add_handle(mhnd, hnd);"))
+
+;; removes a curl handle from the multi stack again
+(define-cproc curl-multi-remove-handle (mhnd::<curl-multi-base> hnd::<curl-base>)
+  (body <int>
+	"SCM_RESULT = curl_multi_remove_handle(mhnd, hnd);"))
+
+(define-cproc curl-multi-perform (mhnd::<curl-multi-base>)
+  (body <top>
+	"int result;"
+	"int *running_hanldles;"
+	"result = curl_multi_perform(mhnd, running_hanldles);"
+	"SCM_RESULT = Scm_Values2(SCM_MAKE_INT(result), SCM_MAKE_INT(running_hanldles));"))
 
 ; set option
 (define-cproc curl-share-setopt (hnd::<curl-share-base> opt::<int> param::<top>)
@@ -479,6 +486,12 @@
       (define-enum CURLOPT_SOCKS5_GSSAPI_SERVICE)
       (define-enum CURLOPT_SOCKS5_GSSAPI_NEC)
       (define-enum CURLOPT_TFTP_BLKSIZE)))
+;; (>= 7.19.6)
+(if "LIBCURL_VERSION_NUM >= 0x071306"
+    (begin
+      (define-enum CURLOPT_SSH_KNOWNHOSTS)
+      (define-enum CURLOPT_SSH_KEYFUNCTION)
+      (define-enum CURLOPT_SSH_KEYDATA)))
 
 (define-enum CURLOPTTYPE_OFF_T)
 
@@ -715,6 +728,22 @@
       (define-enum CURLM_UNKNOWN_OPTION)))
 (define-enum CURLM_LAST)
 
+;; CURLMoptions
+;; (>= 7.15.4)
+(if "LIBCURL_VERSION_NUM >= 0x070f04"
+    (begin
+      (define-enum CURLMOPT_SOCKETFUNCTION)
+      (define-enum CURLMOPT_SOCKETDATA)))
+;; (>= 7.16.0)
+(if "LIBCURL_VERSION_NUM >= 0x071000"
+    (begin
+      (define-enum CURLMOPT_PIPELINING)
+      (define-enum CURLMOPT_TIMERFUNCTION)
+      (define-enum CURLMOPT_TIMERDATA)))
+;; (>= 7.16.3)
+(if "LIBCURL_VERSION_NUM >= 0x071003"
+      (define-enum CURLMOPT_MAXCONNECTS))
+
 ;; CURLMSG
 (define-enum CURLMSG_NONE)
 (define-enum CURLMSG_DONE)
@@ -847,6 +876,15 @@
 (define-enum CURL_TIMECOND_IFUNMODSINCE)
 (define-enum CURL_TIMECOND_LASTMOD)
 
+
+;;  CURLOPT_SSH_KEYFUNCTION return code
+; (>= 7.17.6)
+(if "LIBCURL_VERSION_NUM >= 0x071306"
+    (begin 
+      (define-enum CURLKHSTAT_FINE_ADD_TO_FILE)
+      (define-enum CURLKHSTAT_FINE)
+      (define-enum CURLKHSTAT_REJECT)
+      (define-enum CURLKHSTAT_DEFER)))
 
 ;; Local variables:
 ;; mode: scheme

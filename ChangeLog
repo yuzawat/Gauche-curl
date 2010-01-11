@@ -1,3 +1,17 @@
+2010-01-10  yuzawat  <suzdalenator@gmail.com>
+
+	Confirm to work with Gauche-0.9
+	* curl.scm
+	libcurl version 7.19.7
+	add  "--crlfile" to %easy-options.
+
+2009-10-28  yuzawat  <suzdalenator@gmail.com>
+
+	* curllib.stub
+	* curl.scm
+	libcurl version 7.19.6
+	fix curl-open-input-file, curl-open-input-port return object.
+	
 2009-08-08  yuzawat  <suzdalenator@gmail.com>
 
 	* curllib.stub

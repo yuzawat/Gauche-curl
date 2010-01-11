@@ -2,7 +2,7 @@
 /*
  * curl.c
  *
- * Last Updated: "2009/08/03 19:34.10"
+ * Last Updated: "2009/08/15 16:54.24"
  *
  * Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
  */
@@ -55,6 +55,7 @@ static void curlfile_cleanup(ScmObj obj)
   FILE *fp = SCMCURL_FILE_UNBOX(obj);
   fclose(fp);
 }
+
 
 /* write to file, read from file */
 FILE *curl_open_file(CURL *hnd, int type, const char* fn)
@@ -457,9 +458,6 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
 #if LIBCURL_VERSION_NUM >= 0x070e01
     case CURLINFO_COOKIELIST:
 #endif
-#if LIBCURL_VERSION_NUM >= 0x071301
-    case CURLINFO_CERTINFO:
-#endif
       (struct curl_slist *)result;
       rc = curl_easy_getinfo(hnd, info, &result);
       if ( rc == 0) {
@@ -541,6 +539,32 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
 	res = SCM_FALSE;
       }
       break;
+      /* struct curl_certinfo */
+/* #if LIBCURL_VERSION_NUM >= 0x071301 */
+/*     case CURLINFO_CERTINFO: */
+/*       (struct curl_certinfo *)result; */
+/*       rc = curl_easy_getinfo(hnd, info, &result); */
+/*       if ( rc == 0) { */
+/* 	if (result == NULL) { */
+/* 	  res = SCM_FALSE; */
+/* 	} else { */
+/* 	  int i; */
+/* 	  ScmObj head = SCM_NIL, tail = SCM_NIL;	  */
+/* 	  for (i=0; i < result.num_of_certs; i++) { */
+/* 	    struct curl_slist *slist; */
+/* 	    ScmObj head0 = SCM_NIL, tail0 = SCM_NIL; */
+/* 	    for (slist = result.certinfo[i]; slist; slist = slist->next) { */
+/* 	      SCM_APPEND1(head0, tail0, SCM_MAKE_STR_COPYING(slist->data)); */
+/* 	    } */
+/* 	    SCM_APPEND1(head, tail, head0); */
+/* 	  } */
+/* 	  res = head; */
+/* 	} */
+/*       } else { */
+/* 	res = SCM_FALSE; */
+/*       } */
+/*       break; */
+/* #endif */
       /* else */
     default:
       res = SCM_FALSE;
