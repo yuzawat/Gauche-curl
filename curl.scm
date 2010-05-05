@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/05/05 19:04.33"
+;;; Last Updated: "2010/05/06 00:20.43"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -1333,9 +1333,8 @@
 
 (define-method curl-async-perform ((curlm <curl-multi>))
   (curl-perform curlm)
-  (do ((#f #f #f))
+  (do ((#f #f (curl-perform curlm)))
       ((= (remains-of curlm) 0) (handlers-of curlm))
-    (curl-perform curlm)
     (apply sys-select (append (curl-fdset curlm) '(50000)))))
 
 ; share interface

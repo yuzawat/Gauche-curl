@@ -2,7 +2,7 @@
 /*
  * curl.c
  *
- * Last Updated: "2010/05/05 18:17.09"
+ * Last Updated: "2010/05/05 21:11.00"
  *
  * Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
  */
@@ -60,7 +60,8 @@ static void curlsh_cleanup(ScmObj obj)
 static void curlslist_cleanup(ScmObj obj)
 {
   struct curl_slist *slist = SCMCURL_SLIST_UNBOX(obj);
-  slist = NULL;
+  //curl_slist_free_all(slist);
+  slist =NULL;
 }
 
 /* <curl-file> cleanup */
@@ -715,7 +716,7 @@ void Scm_Init_curl(void)
     ScmCurl_SListClass =
       Scm_MakeForeignPointerClass(mod, "<curl-slist>",
 				  NULL,
-				  curlslist_cleanup,
+				  NULL,
 				  SCM_FOREIGN_POINTER_KEEP_IDENTITY|SCM_FOREIGN_POINTER_MAP_NULL);
 
     ScmCurl_FileClass =

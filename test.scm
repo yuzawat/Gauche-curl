@@ -105,6 +105,24 @@
     (test* "http-get body" #t 
 	   (is-a? (#/Google/ (string-incomplete->complete body :omit)) <regmatch>))))
 
+(test-section "progress bar")
+(let* ((c (make <curl> :url "http://www.google.com/" :options "-L"))
+       (op (curl-open-output-port c)))
+  (curl-set-progress! c #t)
+  (c))
+
+(test-section "multi interface")
+(let* ((c (make <curl> :url "http://www.google.co.jp/" :options "-L"))
+       (c2 (make <curl> :url "http://www.yahoo.co.jp/" :options "-L"))
+       (op (curl-open-output-port c))
+       (hp (curl-open-header-port c))
+       (op2 (curl-open-output-port c2))
+       (hp2 (curl-open-header-port c2))
+       (cm (make <curl-multi> :timeout 30 :maxconnect 25 :pipelining #t)))
+  (curl-handler-add! cm c)
+  (curl-handler-add! cm c2)
+  (curl-async-perform cm))
+
 (test* "curl-global-cleanup" #t
        (eq? (undefined) (curl-global-cleanup)))
 
