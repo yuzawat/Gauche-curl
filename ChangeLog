@@ -1,3 +1,23 @@
+2010-05-05  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.2.0
+	support multi interface and progress bar.
+	libcurl version 7.20.1
+	* curl.scm
+	* curllib.stub
+	* curl.c
+	* gauche_curl.h
+	fix curl-getinfo(cert_info and so on) and other bugs.
+	
+2010-02-11  yuzawat  <suzdalenator@gmail.com>
+
+	* curl.scm
+	libcurl version 7.20.0
+	add those to %easy-options.
+	 "--tftp-blksize"
+	 "--mail-rcpt"
+	 "--mail-from"
+	
 2010-01-10  yuzawat  <suzdalenator@gmail.com>
 
 	Confirm to work with Gauche-0.9

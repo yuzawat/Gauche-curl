@@ -3,9 +3,9 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/01/10 00:12.21"
+;;; Last Updated: "2010/05/05 19:04.33"
 ;;;
-;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
+;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
 
 ;;; Example
@@ -21,7 +21,9 @@
 ;;;    (get-output-string output-str-port)))
 
 (define-module curl
+  (use file.util)
   (use gauche.mop.singleton)
+  (use gauche.parameter)
   (use gauche.parseopt)
   (use gauche.version)
   (use rfc.822)
@@ -31,7 +33,11 @@
   (export 
    <curl>
    <curl-multi>
+
    <curl-base>
+   <curl-multi-base>
+
+   <curl-error>
 
    ;; bare functions
    curl-global-init
@@ -45,6 +51,7 @@
    curl-easy-duphandle
    curl-easy-getinfo
    curl-easy-strerror
+   curl-easy-pause
    curl-easy-escape
    curl-easy-unescape
    curl-free
@@ -57,7 +64,13 @@
    curl-multi-cleanup
    curl-multi-add-handle
    curl-multi-remove-handle
+   curl-multi-setopt
    curl-multi-perform
+   curl-multi-fdset
+   curl-multi-strerror
+   curl-multi-timeout
+   curl-multi-info-read
+   curl-multi-info-read->list
 
    curl-share-init
    curl-share-setopt
@@ -70,8 +83,12 @@
    curl-open-port
    curl-close-file
 
-   list->curl-slist
+   curl-list->curl-slist
    curl-slist->list
+
+   <curl-progress>
+   curl-set-progress-options
+   curl-get-progress-numbers
 
    ;; procedure
    curl-setopt!
@@ -80,6 +97,17 @@
    curl-cleanup!
    curl-reset!
    curl-strerror
+   curl-pause
+   curl-unpause
+
+   curl-handler-add!
+   curl-handler-remove!
+   curl-timeout!
+   curl-fdset
+   curl-info-read
+   curl-multi-info->list
+   curl-async-perform
+
    curl-open-output-file
    curl-open-input-file
    curl-open-header-file
@@ -89,11 +117,22 @@
    curl-open-header-port
    curl-headers->alist
 
+   curl-set-progress!
+   curl-get-progress
+
+   handler-of
+   handlers-of
+   rc-of
+   remains-of
+   url-of
+   options-of
+
    http-get
    http-head
    http-post
    http-put
    http-delete
+   http-user-agent
 
    ;; curl response code
    CURLE_OK
@@ -350,6 +389,18 @@
    CURLOPT_SSH_KNOWNHOSTS
    CURLOPT_SSH_KEYFUNCTION
    CURLOPT_SSH_KEYDATA
+   CURLOPT_RTSP_REQUEST
+   CURLOPT_RTSP_SESSION_ID
+   CURLOPT_RTSP_STREAM_URI
+   CURLOPT_RTSP_TRANSPORT
+   CURLOPT_RTSP_HEADER
+   CURLOPT_RTSP_CLIENT_CSEQ
+   CURLOPT_RTSP_SERVER_CSEQ
+   CURLOPT_INTERLEAVEFUNCTION
+   CURLOPT_INTERLEAVEDATA
+   CURLOPT_MAIL_FROM
+   CURLOPT_MAIL_RCPT
+   CURLOPT_FTP_USE_PRET
 
    ;; curl information code
    CURLINFO_NONE
@@ -488,6 +539,18 @@
    CURL_TIMECOND_IFUNMODSINCE
    CURL_TIMECOND_LASTMOD
 
+   ;; RTSP enum values
+   CURL_RTSPREQ_OPTIONS
+   CURL_RTSPREQ_DESCRIBE
+   CURL_RTSPREQ_ANNOUNCE
+   CURL_RTSPREQ_SETUP
+   CURL_RTSPREQ_PLAY
+   CURL_RTSPREQ_PAUSE
+   CURL_RTSPREQ_TEARDOWN
+   CURL_RTSPREQ_GET_PARAMETER
+   CURL_RTSPREQ_SET_PARAMETER
+   CURL_RTSPREQ_RECORD
+   CURL_RTSPREQ_RECEIVE
 
    )
   )
@@ -517,21 +580,13 @@
 	    :init-keyword :options
 	    :init-value ""
 	    :accessor options-of)
+   (progress :allocation :instance
+	     :init-keyword :progress
+	     :init-value #f
+	     :accessor progress-of)
    (http-headers :allocation :instance
 		 :init-value '()
 		 :accessor http-headers-of)))
-
-(define-class <curl-share> (<curl-meta> <singleton-mixin>)
-  ())
-
-(define-class <curl-multi> (<curl-meta>)
-  ((handlers :allocation :instance
-	:init-keyword :handlers
-	:accessor handlers-of)
-   (options :allocation :instance
-	   :init-keyword :options
-	   :init-value ""
-	   :accessor options-of)))
 
 (define-method initialize ((curl <curl>) initargs)
   (next-method)
@@ -541,19 +596,15 @@
   (when (slot-bound? curl 'options)
     (%easy-options curl (options-of curl))))
 
-(define-method initialize ((share <curl-share>) initargs)
-  (next-method)
-  (slot-set! share 'handler (curl-share-init))
-  (curl-share-setopt (handler-of share) CURLSHOPT_SHARE CURL_LOCK_DATA_COOKIE)
-  (curl-share-setopt (handler-of share) CURLSHOPT_SHARE CURL_LOCK_DATA_DNS))
-
 (define-method object-apply ((curl <curl>))
   (curl-perform curl))
 
 
 ;; condition
-(define-condition-type <curl-error> <error> #f)
-
+(define-condition-type <curl-error> <error> 
+  #f
+  (errno)
+  (error))
 
 ;; utils
 ; libcurl version check
@@ -643,6 +694,8 @@
 	 (local-port "local-port=s" #f)
 	 (ipv4 "4|ipv4" #f)
 	 (ipv6 "6|ipv6" #f)
+	 (ssl "ssl" #f)
+	 (ssl-reqd "ssl-reqd" #f)
 	 (tlsv1 "1|tlsv1" #f)
 	 (sslv2 "2|sslv2" #f)
 	 (sslv3 "3|sslv3" #f)
@@ -687,7 +740,10 @@
 	 (ftp-ssl-reqd "ftp-ssl-reqd" #f)
 	 (ftp-ssl-ccc "ftp-ssl-ccc" #f)
 	 (ftp-ssl-ccc-mode "ftp-ssl-ccc-mode=s" #f)
-	 (telnet-option "t|telnet-option=s" #f))
+	 (telnet-option "t|telnet-option=s" #f)
+	 (tftp-blksize "tftp-blksize=i" 512)
+	 (mail-rcpt "mail-rcpt=s" #f)
+	 (mail-from "mail-from=s" #f))
       ;; common
       (when urlstr (begin (_ curl CURLOPT_URL urlstr) (set! (url-of curl) urlstr)))
       (when curl-share-enable (_ curl CURLOPT_SHARE (handler-of (make <curl-share>))))
@@ -914,27 +970,30 @@
 			(begin
 			  (_ curl CURLOPT_SSLKEY (m 1))
 			  (cond 
-			   ((vc "7.16.5") (_ CURLOPT_KEYPASSWD (m 2)))
-			   ((vc "7.9.3") (_ CURLOPT_SSLKEYPASSWD (m 2)))
-			   (else (_ CURLOPT_CERTKEYPASSWD (m 2)))))))
-		  (else (_ curl CURLOPT_SSLKEY cert))))
+			   ((vc "7.16.5") (_ curl CURLOPT_KEYPASSWD (m 2)))
+			   ((vc "7.9.3") (_ curl CURLOPT_SSLKEYPASSWD (m 2)))
+			   (else (_ curl CURLOPT_CERTKEYPASSWD (m 2)))))))
+		  (else (_ curl curl CURLOPT_SSLKEY cert))))
 	  (when key 
 	    (cond 
-	     ((vc "7.16.5") (_ CURLOPT_KEYPASSWD key))
-	     ((vc "7.9.3") (_ CURLOPT_SSLKEYPASSWD key))
-	     (else (_ CURLOPT_CERTKEYPASSWD key))))
+	     ((vc "7.16.5") (_ curl CURLOPT_KEYPASSWD key))
+	     ((vc "7.9.3") (_ curl CURLOPT_SSLKEYPASSWD key))
+	     (else (_ curl CURLOPT_CERTKEYPASSWD key))))
 	  (when pass 
 	    (cond 
-	     ((vc "7.16.5") (_ CURLOPT_KEYPASSWD pass))
-	     ((vc "7.9.3") (_ CURLOPT_SSLKEYPASSWD pass))
-	     (else (_ CURLOPT_CERTKEYPASSWD pass))))
+	     ((vc "7.16.5") (_ curl CURLOPT_KEYPASSWD pass))
+	     ((vc "7.9.3") (_ curl CURLOPT_SSLKEYPASSWD pass))
+	     (else (_ curl CURLOPT_CERTKEYPASSWD pass))))
 	  (when key-type 
 	    (cond ((equal? key-type "PEM") (_ curl CURLOPT_SSLKEYTYPE key-type))
 		  ((equal? key-type "DER") (_ curl CURLOPT_SSLKEYTYPE key-type))
 		  ((equal? key-type "ENG") (_ curl CURLOPT_SSLKEYTYPE key-type))
 		  (else (error <curl-error> :message "SSL private key type is invalid."))))
 	  (when insecure (_ curl CURLOPT_SSL_VERIFYHOST 0))
-	  (when (vc "7.17.7") (when crlfile (_ curl CURLOPT_CRLFILE crlfile)))))
+	  (when (vc "7.17.7") (when crlfile (_ curl CURLOPT_CRLFILE crlfile)))
+	  (when (vc "7.20.0") 
+	    (begin (when ssl (_ curl CURLOPT_USE_SSL CURLUSESSL_TRY))
+		   (when ssl-reqd (_ curl CURLOPT_USE_SSL CURLUSESSL_ALL))))))
       ;; SSH
       (when (pc "scp")
 	(begin
@@ -943,19 +1002,18 @@
 	  (when pubkey (_ curl CURLOPT_SSH_PUBLIC_KEYFILE pubkey))
 	  (when hostpubmd5 (_ curl CURLOPT_SSH_HOST_PUBLIC_KEY_MD5 hostpubmd5))
 	  (when pass (cond 
-		      ((vc "7.16.5") (_ CURLOPT_KEYPASSWD pass))
-		      ((vc "7.9.3") (_ CURLOPT_SSLKEYPASSWD pass))
-		      (else (_ CURLOPT_CERTKEYPASSWD pass))))))
-;; (vc "7.19.6")
-;; (_ CURLOPT_SSH_KNOWNHOSTS 
-;; (_ CURLOPT_SSH_KEYFUNCTION)
-;; (_ CURLOPT_SSH_KEYDATA)
+		      ((vc "7.16.5") (_ curl CURLOPT_KEYPASSWD pass))
+		      ((vc "7.9.3") (_ curl CURLOPT_SSLKEYPASSWD pass))
+		      (else (_ curl CURLOPT_CERTKEYPASSWD pass))))
+	  (when (vc "7.19.6")
+	      (when (home-directory)
+		(_ curl CURLOPT_SSH_KNOWNHOSTS (string-append (home-directory) "/.ssh/known_hosts"))))))
       ;; FTP
       (when (pc "ftp")
 	(begin
 	  (if ftp-port (_ curl CURLOPT_FTPPORT ftp-port) (_ curl CURLOPT_FTPPORT #f))
 	  (when ftp-pasv (_ curl CURLOPT_FTPPORT #f))
-	  (when quote (_ curl CURLOPT_QUOTE (list->curl-slist (string-split quote #\,))))
+	  (when quote (_ curl CURLOPT_QUOTE (curl-list->curl-slist (string-split quote #\,))))
 	  (when list-only 
 	    (when (vc "7.16.5") (_ curl CURLOPT_DIRLISTONLY 1) (_ curl CURLOPT_FTPLISTONLY 1)))
 	  (when append 
@@ -994,22 +1052,25 @@
 	      (begin
 		(when ftp-ssl (_ curl CURLOPT_USE_SSL CURLUSESSL_TRY))
 		(when ftp-ssl-control (_ curl CURLOPT_USE_SSL CURLUSESSL_CONTROL))
-		(when ftp-ssl-reqd (_ curl CURLOPT_USE_SSL CURLUSESSL_ALL)))
-	      (begin
-		(when ftp-ssl (_ curl CURLOPT_FTP_SSL CURLFTPSSL_TRY))
-		(when ftp-ssl-control (_ curl CURLOPT_FTP_SSL CURLFTPSSL_CONTROL))
-		(when ftp-ssl-reqd (_ curl CURLOPT_FTP_SSL CURLFTPSSL_ALL))))
-	      (when ftp-ssl-ccc (_ curl CURLOPT_FTP_SSL_CCC CURLFTPSSL_CCC_PASSIVE))
-	      (when ftp-ssl-ccc-mode
-		(cond ((equal? ftp-ssl-ccc-mode "active") (_ curl CURLOPT_FTP_SSL_CCC CURLFTPSSL_CCC_ACTIVE))
-		      ((equal? ftp-ssl-ccc-mode "passive") (_ curl CURLOPT_FTP_SSL_CCC CURLFTPSSL_CCC_PASSIVE))
-		      (else (error <curl-error> :message "ftp ssl ccc mode is invalid.")))))))
+		(when ftp-ssl-reqd (_ curl CURLOPT_USE_SSL CURLUSESSL_ALL))))
+	    (when ftp-ssl-ccc (_ curl CURLOPT_FTP_SSL_CCC CURLFTPSSL_CCC_PASSIVE))
+	    (when ftp-ssl-ccc-mode
+	      (cond ((equal? ftp-ssl-ccc-mode "active") (_ curl CURLOPT_FTP_SSL_CCC CURLFTPSSL_CCC_ACTIVE))
+		    ((equal? ftp-ssl-ccc-mode "passive") (_ curl CURLOPT_FTP_SSL_CCC CURLFTPSSL_CCC_PASSIVE))
+		    (else (error <curl-error> :message "ftp ssl ccc mode is invalid.")))))))
       ;; LDAP
       (when (pc "ldap")
 	(when use-ascii (_ curl CURLOPT_TRANSFERTEXT) 1))
       ;; telnet
       (when (pc "telnet")
-	(when telnet-option (_ curl CURLOPT_TELNETOPTIONS (list->curl-slist (string-split telnet-option #\,))))))))
+	(when telnet-option (_ curl CURLOPT_TELNETOPTIONS (curl-list->curl-slist (string-split telnet-option #\,)))))
+      ;; tftp
+      (when (and (pc "tftp") (vc "7.20.0"))
+	(_ curl CURLOPT_TFTP_BLKSIZE tftp-blksize))
+      ;; SMTP
+      (when (and (pc "smtp") (vc "7.20.0"))
+	(when mail-rcpt	(_ curl CURLOPT_MAIL_RCPT (string-split mail-rcpt #\,)))
+	(when mail-from (_ curl CURLOPT_MAIL_FROM mail-from))))))
 
 
 ;; fflush
@@ -1049,11 +1110,12 @@
 ;;        (keepalive-time "keepalive-time=i" #f)
 
 ; procedure
+; easy interface
 (define-method curl-setopt! ((curl <curl>) opt val)
   (let1 hnd (handler-of curl)
     (if hnd 
 	(let1 res (curl-easy-setopt hnd opt (if (list? val) 
-						(list->curl-slist val) val))
+						(curl-list->curl-slist val) val))
 	  (slot-set! curl 'rc res)
 	  (when (equal? opt CURLOPT_HTTPHEADER)
 	    (unless (equal? (http-headers-of curl) val)
@@ -1072,14 +1134,11 @@
 	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-strerror ((curl <curl>))
-  (if (rc-of curl) 
-      (curl-easy-strerror (rc-of curl))
-      #f))
-
-(define-method curl-strerror ((share <curl-share>))
-  (if (rc-of share) 
-      (curl-share-strerror (rc-of share))
-      #f))
+  (if (vc "7.12.0")
+      (if (rc-of curl) 
+	  (curl-easy-strerror (rc-of curl))
+	  #f)
+      (error <curl-error> "This method is unsupported in this version of libcurl.")))
 
 (define-method curl-getinfo ((curl <curl>))
   (let ((hnd (handler-of curl))
@@ -1118,8 +1177,7 @@
 	  ,(if (vc "7.18.2") (cons 'REDIRECT_URL (_ hnd CURLINFO_REDIRECT_URL)) #f)
 	  ,(if (vc "7.19.0") (cons 'PRIMARY_IP (_ hnd CURLINFO_PRIMARY_IP)) #f)
 	  ,(if (vc "7.19.0") (cons 'APPCONNECT_TIME (_ hnd CURLINFO_APPCONNECT_TIME)) #f)
-	  ;; FIXME: must be support struct curl_certinfo
-	  ;,(if (and (vc "7.19.1") (fc "SSL")) (cons 'CERTINFO (_ hnd CURLINFO_CERTINFO)) #f)
+	  ,(if (and (vc "7.19.1") (fc "SSL")) (cons 'CERTINFO (_ hnd CURLINFO_CERTINFO)) #f)
 	  ,(if (vc "7.19.4") (cons 'CONDITION_UNMET (_ hnd CURLINFO_CONDITION_UNMET)) #f)))
     (error <curl-error> :message "curl handler is invalid."))))
 
@@ -1147,6 +1205,155 @@
 		(else #f)))
 	(error <curl-error> :message "curl handler is invalid."))))
 
+(define-method curl-pause ((curl <curl>) . direction)
+  (if (vc "7.18.0")
+      (let1 rc
+	  (if (null? direction)
+	      (curl-easy-pause (handler-of curl) CURLPAUSE_ALL)
+	      (cond ((eq (car direction) 'SEND)
+		     (curl-easy-pause (handler-of curl) CURLPAUSE_SEND))
+		    ((eq (car direction) 'RECV)
+		     (curl-easy-pause (handler-of curl) CURLPAUSE_RECV))
+		    (else 
+		     (error <curl-error> :message "Pause direction is invalid(only SEND or RECV)."))))
+	(slot-set! curl 'rc rc)
+	(if (= rc 0) #t #f))
+      (error <curl-error> "This method is unsupported in this version of libcurl.")))
+
+(define-method curl-unpause ((curl <curl>))
+  (if (vc "7.18.0")
+      (let1 rc (curl-easy-pause (handler-of curl) CURLPAUSE_CONT)
+	(slot-set! curl 'rc rc)
+	(if (= rc 0) #t #f))
+      (error <curl-error> "This method is unsupported in this version of libcurl.")))
+
+
+; multi interface
+(define-class <curl-multi> (<curl-meta>)
+  ((handlers :allocation :instance
+	     :init-value '()
+	     :accessor handlers-of)
+   (remains :allocation :instance
+	    :init-value 0
+	    :accessor remains-of)
+   (timeout :allocation :instance
+	    :init-keyword :timeout
+	    :init-value 0
+	    :accessor timeout-of)
+   (maxconnect :allocation :instance
+	       :init-keyword :maxconnect
+	       :init-value 10
+	       :accessor maxconnect-of)
+   (pipelining :allocation :instance
+	       :init-keyword :pipelining
+	       :init-value #f
+	       :accessor pipilining-of)))
+
+(define-method initialize ((curlm <curl-multi>) initargs)
+  (next-method)
+  (slot-set! curlm 'handler (curl-multi-init))
+  (and (vc "7.15.4") (not (= (timeout-of curlm) 0)) 
+       (curl-multi-timeout (handler-of curlm) (timeout-of curlm)))
+  (and (vc "7.16.0") (pipilining-of curlm)
+       (curl-setopt! curlm CURLMOPT_PIPELINING 1))
+  (and (vc "7.16.3") (not (= (maxconnect-of curlm) 10)) 
+       (curl-setopt! curlm CURLMOPT_MAXCONNECTS (maxconnect-of curlm))))
+
+(define-method object-apply ((curlm <curl-multi>))
+  (curl-perform curlm))
+
+(define-method curl-cleanup! ((curlm <curl-multi>))
+  (let1 hnd (handler-of curlm)
+    (if hnd
+	(let1 res (curl-multi-cleanup hnd)
+	  (cond ((= res 0)
+		 (for-each (cut curl-cleanup! <>) (handlers-of curlm))
+		 (slot-set! curlm 'handlers '())
+		 (slot-set! curlm 'rc #f)
+		 #t)
+		(else 
+		 (slot-set! curlm 'rc rc)
+		 #f)))
+	(error <curl-error> :message "curl multi handler is invalid."))))
+
+(define-method curl-setopt! ((curlm <curl-multi>) opt val)
+  (if (vc "7.15.4")
+      (let1 hnd (handler-of curlm)
+	(if hnd 
+	    (let1 res (curl-multi-setopt (handler-of curlm) opt val)
+	      (slot-set! curlm 'rc res)
+	      (if (= res 0) #t #f))
+	    (error <curl-error> :message "curl multi handler is invalid.")))
+      (error <curl-error> "This method is unsupported in this version of libcurl.")))
+
+(define-method curl-handler-add! ((curlm <curl-multi>) (curl <curl>))
+  (let1 res (curl-multi-add-handle (handler-of curlm) (handler-of curl))
+    (if (= res 0)
+	(begin
+	  (slot-set! curlm 'handlers (append (handlers-of curlm) (list curl)))
+	  (undefined))
+	(error <curl-error> :message "curl handler could not add to multi handler."))))	
+
+(define-method curl-handler-remove! ((curlm <curl-multi>) (curl <curl>))
+  (let1 res (curl-multi-remove-handle (handler-of curlm) (handler-of curl))
+    (if (= res 0)
+	(begin
+	  (slot-set! curlm 'handlers (remove (cut eq? <> curl) (handlers-of curlm)))
+	  (undefined))
+	(error <curl-error> :message "curl handler could not remove from multi handler."))))
+
+(define-method curl-perform ((curlm <curl-multi>))
+  (let1 res (curl-multi-perform (handler-of curlm))
+    (slot-set! curlm 'rc (car res))
+    (slot-set! curlm 'remains (cdr res))
+    (update-multi-results! curlm)
+    (if (<= (slot-ref curlm 'rc) 0) #t
+	#f)))
+
+(define-method curl-strerror ((curlm <curl-multi>))
+  (if (vc "7.12.0")
+      (if (rc-of curlm) 
+	  (curl-multi-strerror (rc-of curlm))
+	  #f)
+      (error <curl-error> "This method is unsupported in this version of libcurl.")))
+
+(define-method curl-multi-info->list ((curlm <curl-multi>))
+  (_curl-multi-info->list (handler-of curlm)))
+
+(define-method update-multi-results! ((curlm <curl-multi>))
+  (for-each
+   (lambda (curl) 
+     (for-each 
+      (lambda (result) (when (eq? (handler-of curl) (cdr result)) (slot-set! curl 'rc (car result))))
+      (curl-multi-info->list curlm)))
+   (handlers-of curlm)))
+
+(define-method curl-fdset ((curlm <curl-multi>))
+  (curl-multi-fdset (handler-of curlm)))
+
+(define-method curl-async-perform ((curlm <curl-multi>))
+  (curl-perform curlm)
+  (do ((#f #f #f))
+      ((= (remains-of curlm) 0) (handlers-of curlm))
+    (curl-perform curlm)
+    (apply sys-select (append (curl-fdset curlm) '(50000)))))
+
+; share interface
+(define-class <curl-share> (<curl-meta> <singleton-mixin>)
+  ())
+
+(define-method initialize ((share <curl-share>) initargs)
+  (next-method)
+  (slot-set! share 'handler (curl-share-init))
+  (curl-share-setopt (handler-of share) CURLSHOPT_SHARE CURL_LOCK_DATA_COOKIE)
+  (curl-share-setopt (handler-of share) CURLSHOPT_SHARE CURL_LOCK_DATA_DNS))
+
+(define-method curl-strerror ((share <curl-share>))
+  (if (vc "7.12.0")
+      (if (rc-of share) 
+	  (curl-share-strerror (rc-of share))
+	  #f)
+      (error <curl-error> "This method is unsupported in this version of libcurl.")))
 
 ; I/O
 (define-method curl-open-output-file ((curl <curl>) filename)
@@ -1210,6 +1417,7 @@
 				(error <curl-error> :message "Set output port."))))
 	(error <curl-error> :message "curl handler is invalid."))))
 
+;utils
 (define (curl-headers->alist headers-str . num)
   (let1 ls (remove null? (map (lambda  (h) (rfc822-read-headers (open-input-string h)))
 			      (string-split headers-str "\r\n\r\n")))
@@ -1218,6 +1426,18 @@
 	  (if (>= n 0) (list-ref ls n)
 	      (list-ref ls (- (length ls) 1)))))))
 
+; progress
+(define-method curl-set-progress! ((curl <curl>) . show-bar)
+  (if (not (slot-ref curl 'progress))
+      (if (null? show-bar)
+	  (slot-set! curl 'progress (curl-set-progress-options (handler-of curl)))
+	  (slot-set! curl 'progress (curl-set-progress-options-show (handler-of curl))))
+      (slot-ref curl 'progress)))
+
+(define-method curl-get-progress ((curl <curl>))
+  (if (slot-ref curl 'progress)
+      (curl-get-progress-numbers (slot-ref curl 'progress))
+      '()))
 
 ; wrapper procedure
 ;; Common
@@ -1225,6 +1445,8 @@
   (let-keywords opts ((no-redirect :no-redirect #f)
 		      (sink :sink #f)
 		      (flusher :flusher #f)
+		      #;(request-encoding :request-encoding #f)
+		      (proxy :proxy #f)
 		      (ssl :ssl #f)
 		      (verbose :verbose #f)
 		      . opt)
@@ -1235,12 +1457,15 @@
 		  (when verbose (curl-setopt! curl CURLOPT_VERBOSE 1))
 		  (if (equal? method 'HEAD) (curl-setopt! curl CURLOPT_NOBODY 1)
 		      (curl-setopt! curl CURLOPT_CUSTOMREQUEST (symbol->string method)))
-		  (curl-setopt! curl CURLOPT_USERAGENT (string-append "Gauche/" (gauche-version) " " (curl-version)))
+		  (curl-setopt! curl CURLOPT_USERAGENT (http-user-agent))
 		  (curl-setopt! curl CURLOPT_HTTP_VERSION CURL_HTTP_VERSION_NONE)
 		  (when body (curl-setopt! curl CURLOPT_POSTFIELDS body))
 		  (if no-redirect (curl-setopt! curl CURLOPT_FOLLOWLOCATION 0)
 		      (curl-setopt! curl CURLOPT_FOLLOWLOCATION 1))
-		  (unless (null? opt) 
+		  (when proxy (begin 
+				(curl-setopt! curl CURLOPT_PROXYTYPE CURLPROXY_HTTP)
+				(curl-setopt! curl CURLOPT_PROXY proxy)))
+		  (unless (null? opt)
 		    (curl-setopt! curl CURLOPT_HTTPHEADER
 				  (map (lambda (h) (string-append (keyword->string (car h)) ": " (cadr h))) (slices opt 2))))
 		  (if (curl)
@@ -1250,6 +1475,9 @@
 			   (curl-headers->alist (get-output-string header) -1)
 			   (get-output-string output)))
 		      #f))))
+
+(define http-user-agent 
+  (make-parameter (string-append "gauche.http/" (gauche-version) " (" (curl-version) ")")))
 
 ;; GET
 (define (http-get hostname path . opt)

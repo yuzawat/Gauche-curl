@@ -6,12 +6,12 @@ Abstract:
  
 Author: yuzawat <suzdalenator ＠ gmail.coml>
 
-Version: 0.1.3 2010/01/10
+Version: 0.2.0 2010/05/05
 ======================================================================
 
 Module: curl
  このモジュールは、libcurl - the multiprotocol file transfer library へのバインディングを提供します。
- libcurlの機能を利用して、URLで表現される各種ネットワークリソースを取得やアップロードが可能になります。
+ libcurlの機能を利用して、URLで表現される各種ネットワークリソースの取得やアップロードが可能になります。
  データのインプット・アウトプットを、ポートにマッピングすることができます。
  libcurlへ設定パラメータを渡すために、curl(1)のコマンドラインオプションを模した簡易インターフェイスを用意しています。
  
@@ -44,7 +44,7 @@ Instance Variable of <curl>: url
 Instance Variable of <curl>: options
  ハンドラーへのオプション設定の簡易インターフェイスです。curl(1) のコマンドラインオプションを指定できます。
  コマンドラインオプションを文字列のリストの形で設定すると、ハンドラーに反映されます（スペースで区切った文字列でも大丈夫ですが、複雑な指定だと上手くパーズできないのでリストにしておいたほうが無難です）。
- オプションの書式や意味は、curl(1)のバージョン 7.19.4に 基本的に準拠しています。
+ オプションの書式や意味は、curl(1)のバージョン 7.20.1に 基本的に準拠しています。
  ただし、コマンドラインパーザの制限で、curlと全て同じ動作にはなっていません。例えばcurl(1)には同じオプションを複数渡すと、値も複数受け取る動作があるのですが、それには従っていません（-H,--headerは、複数指定することでHTTPのヘッダをその数だけ追加できるのですが、それと同じ動作はできません。-H,--headerについては、カンマ(,)で連結した文字列を引数とすることで複数指定に対応しています）。
  上記の制限があるので、options での設定がむずかしいものは、curl-setopt!を直接使用して下さい。
 
@@ -53,6 +53,25 @@ Instance Variable of <curl>: http-headers
 
 Instance Variable of <curl>: rc
  ハンドラーに対して、実行した直前の操作の結果の返値が格納されています。
+
+Instance Variable of <curl>: progress
+ ハンドラーのダウンロード・アップロードの進捗データが格納されています。
+
+Class: <curl-multi>
+ libcurlの multi interface のハンドラーです。複数の <curl> ハンドラーを、非同期で実行することができます。
+ 
+Instance Variable of <curl-multi>: rc
+ ハンドラーに対して、実行した直前の操作の結果の返値が格納されています。
+
+Instance Variable of <curl-multi>: remains
+ まだ実行が完了していない <curl> ハンドラーの数です。
+
+Instance Variable of <curl-multi>: handlers
+ multi interface ハンドラーに格納された <curl> ハンドラーの数です。
+ curl-perform が実行されると、完了したものは <curl> rc が更新されます。
+
+Instance Variable of <curl-multi>: maxconnect
+ multi interface ハンドラーの最大同時接続数です。デフォルトは10。<curl-multi>のインスタンス作成時にキーワード引数で設定可能です。
 
 Condition: <curl-error>
  curlモジュールのコンディションです。<error>を継承しています。
@@ -64,8 +83,17 @@ Method: curl-setopt! (c <curl>) CURLOPT_... val
  注意: Funtion Pointerを渡すためのインターフェイスは設けていません。struct curl_slist を渡すもの（CURLOPT_HTTPHEADERなど）に対しては文字列のリストを渡して下さい。
  正常終了した場合、#t を返します。
 
+Method: curl-setopt! (cm <curl-multi>) CURLMOPT_... val
+ multi interface ハンドラーに対して設定を行ないます。CURLOPT_...はlibcurlで定義されている定数です。詳細は libcurlの関数、curl_multi_setopt のドキュメントを参照して下さい。<http://curl.haxx.se/libcurl/c/curl_multi_setopt.html>
+ 注意: Funtion Pointerを渡すためのインターフェイスは設けていません。
+ 正常終了した場合、#t を返します。
+
 Method: curl-perform (c <curl>)
  ハンドラーを実行します（URLへの接続を行います）。
+ 正常終了した場合、#t を返します。
+
+Method: curl-perform (cm <curl-multi>)
+ multi interface ハンドラーを実行します。
  正常終了した場合、#t を返します。
 
 Method: curl-getinfo (c <curl>)
@@ -76,12 +104,33 @@ Method: curl-cleanup! (c <curl>)
  ハンドラーのクリンナップをします。クリンナップしたハンドラーは使用できなくなります。
  正常終了した場合、#t を返します。
 
+Method: curl-cleanup! (cm <curl-multi>)
+ multi interface ハンドラーのクリンナップをします。クリンナップしたハンドラーは使用できなくなります。
+ 正常終了した場合、#t を返します。
+
 Method: curl-reset! (c <curl>)
  ハンドラーをリセットします。
  正常終了した場合、#t を返します。
 
 Method: curl-strerror (c <curl>)
  ハンドラーの最後の状態を示す文字列を返します。
+
+Method: curl-strerror (cm <curl-multi>)
+ multi interface ハンドラーの最後の状態を示す文字列を返します。
+
+Method: curl-handler-add! (cm <curl-multi>) (c <curl>)
+ multi interface ハンドラーに、ハンドラーを追加します。
+   
+Method: curl-handler-remove! (cm <curl-multi>) (c <curl>)
+ multi interface ハンドラーから、ハンドラーを削除します。
+
+Method: curl-fdset (cm <curl-multi>)
+ 実行中のmulti interface ハンドラーが使用しているfdsetを取り出します。
+ 3つの <sys-fdset> のリスト('(readfds writefds exceptfds))を返します。
+
+Method: curl-multi-info->list (cm <curl-multi>)
+ multi interface ハンドラーで、実行が終了したハンドラーを返します。一度、返したハンドラーは、二度と返しません。
+ Return Codeと、<curl-base>のペアのリスト（'((rc . <curl-base>)...)）を返します。
 
 Method: curl-open-output-file (c <curl>) filename
 Method: curl-open-input-file (c <curl>) filename
@@ -101,13 +150,24 @@ Function: curl-headers->alist string &optional num
  ヘッダ情報の文字列をリストに変換します。libcurlではHTTP接続でリダイレクトされた場合、リダイレクトごとにヘッダが記録されるので、出力結果は連想リストのリストになります。オプションで数字を指定すると、その順位の連想リストが返されます。-1を指定すると最後の連想リストを返します。
 
 Generic application: c
- (curl-perform (c curl))と同意です。 
+ (curl-perform (c <curl>))と同意です。 
+
+Generic application: cm
+ (curl-perform (cm <curl-multi>))と同意です。 
 
 Function: curl-version
  リンクされているlibcurlのバージョン情報の文字列を返します。
 
 Function: curl-version-info
  リンクされているlibcurlのバージョン情報やサポートしている機能、プロトコルなどの連想リストを返します。
+
+Method: curl-set-progress! (c <curl>) &optional show-bar
+ ダウンロード・アップロードの進捗報告を有効にします。オプション引数、show-bar が #t だと標準エラー出力に簡易プログレスバーが表示されます。
+
+Method: curl-get-progress (c <curl>)
+ ダウンロード・アップロードの進捗報告をします。2つの数字のリストを返します。データの意味はそれぞれ、
+  '("total byte" "up/downloaded byte")
+ となります。
 
 Function: http-get server request-uri &keyword sink flusher no-redirect ssl...
 Function: http-head server request-uri &keyword no-redirect ssl...
@@ -117,8 +177,6 @@ Function: http-delete server request-uri &keyword sink flusher no-redirect ssl..
 
  モジュールrfc.httpで定義されている同名の Functionと同じインターフェイスを実現するためのラッパーです。
  キーワード引数 ssl が追加されています。これが #t であれば（そしてlibcurlがSSLをサポートしていれば）SSL接続を試みます。
- http-put, http-deleteは、同様のインターフェイスで、HTTP/1.1の PUTリクエストと DELETEリクエストを実行します。
-
 
 ----
 下位インターフェース
@@ -199,6 +257,12 @@ Function: curl-multi-add-handle mhnd hnd
 Function: curl-multi-remove-handle mhad hand
  multi interface のハンドラーに、easy interfaceハンドラーを追加します。
 
+Function: curl-multi-fdset mhnd
+ multi interface のハンドラーに、easy interfaceハンドラーを追加します。
+
+Function: curl-multi-info-read mhnd msg_in_queue
+ multi interface のハンドラーで、実行完了したeasy interfaceハンドラーを返します。
+
 Function: curl-share-init
  shared interface のハンドラーを生成します。(shnd <curl-share-base>) を返します。
 
@@ -217,7 +281,7 @@ Function: curl-close-file fp
 Function: curl-open-port hnd CURLOPT_... port
  easy interface のハンドラーに、CURLOPT_...で指定された種別のデータを、portで指定されたポートに結び付けます。
 
-Function: list->curl-slist list
+Function: curl-list->curl-slist list
 Function: curl-slist->list curl_slist
  Schemeの文字列のリストと、<curl-slist>を相互に変換します。
 
@@ -225,13 +289,9 @@ Function: curl-slist->list curl_slist
 Todo
 - 未テストのプロトコルの動作確認
 - データアップロード関連の十分なテスト
-- 未実装部分たくさん
 - test.scmをもう少しましに
-- curl-getinfo で、curl_certinfo をサポートする。
 
 制限事項
-- multi interface（複数のハンドラーをまとめて操作する）が未実装です。
-- プログレスメータ・プログレスバーは未実装です（実装するか未定）
 - curl独自のURLのワイルドカードをサポートしていません（実装するか未定）。
 - HTTP POST FORMデータ生成の機能が未実装です。
 - 以下のlibcurl関数のバインディングは未実装、もしくは利用しやすいインターフェイスを作っていません。
@@ -243,18 +303,8 @@ Todo
  curl_formget 
  curl_free 
  curl_global_init_mem 
- curl_multi_add_handle 
  curl_multi_assign 
- curl_multi_cleanup 
- curl_multi_fdset 
- curl_multi_info_read 
- curl_multi_init 
- curl_multi_perform 
- curl_multi_remove_handle 
- curl_multi_setopt 
  curl_multi_socket 
- curl_multi_strerror 
- curl_multi_timeout 
 
 - curl(1)互換の簡易インターフェース(:options)で、以下のものは同じ文字列での指定ができませんので提示されているように書き換えをお願いします。
  --http1.0 => --http1_0
@@ -294,6 +344,7 @@ Todo
 
 
 動作確認環境（と云っても、"make check"が通るだけ）
+- Mac OX X 10.6.3 (libcurl 7.21.1. + Gauche 0.9)
 - Mac OX X 10.6.2 (libcurl 7.19.7. + Gauche 0.9)
 - Mac OX X 10.5.8 (libcurl 7.16.3 + Gauche 0.8.14)
 - Mac OX X 10.5.8 (libcurl 7.19.3 + Gauche 0.8.14)

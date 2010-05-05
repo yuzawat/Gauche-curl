@@ -2,9 +2,9 @@
 /*
  * curl.c
  *
- * Last Updated: "2009/08/15 16:54.24"
+ * Last Updated: "2010/05/05 18:17.09"
  *
- * Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
+ * Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
  */
 
 #include "gauche-curl.h"
@@ -29,6 +29,12 @@ ScmClass *ScmCurl_SListClass;
 /* <curl-file> */
 ScmClass *ScmCurl_FileClass;
 
+/* <curl-progress> */
+ScmClass *ScmCurl_ProgressClass;
+
+/* <curl-msg> */
+ScmClass *ScmCurl_MsgClass;
+
 /* <curl-base> cleanup */
 static void curl_cleanup(ScmObj obj)
 {
@@ -50,10 +56,32 @@ static void curlsh_cleanup(ScmObj obj)
   curl_share_cleanup(shhnd);
 }
 
+/* <curl-slist> cleanup */
+static void curlslist_cleanup(ScmObj obj)
+{
+  struct curl_slist *slist = SCMCURL_SLIST_UNBOX(obj);
+  slist = NULL;
+}
+
+/* <curl-file> cleanup */
 static void curlfile_cleanup(ScmObj obj)
 {
   FILE *fp = SCMCURL_FILE_UNBOX(obj);
   fclose(fp);
+}
+
+/* <curl-progress> cleanup */
+static void curlprogress_cleanup(ScmObj obj)
+{
+  CURLPROGRESS *prog = SCMCURL_PROGRESS_UNBOX(obj);
+  prog = NULL;
+}
+
+/* <curl-msg> cleanup */
+static void curlmsg_cleanup(ScmObj obj)
+{
+  CURLMsg *msg = SCMCURL_MSG_UNBOX(obj);
+  msg = NULL;
 }
 
 
@@ -422,7 +450,12 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
 {
   ScmObj res;
   int rc;
-  void *result;
+  const char *string_result;
+  struct curl_slist *slist_result;
+  long long_result;
+  double double_result;
+  struct curl_certinfo *certs_result;
+
   switch (info)
     {
       /* string */
@@ -440,37 +473,37 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
 #if LIBCURL_VERSION_NUM >= 0x071300
     case CURLINFO_PRIMARY_IP:
 #endif
-      (const char *)result;
-      rc = curl_easy_getinfo(hnd, info, &result);
+      rc = curl_easy_getinfo(hnd, info, &string_result);
       if ( rc == 0 ) {
-	if (result == NULL) {
+	if (string_result == NULL) {
 	  res = SCM_FALSE;
 	} else {
-	  res = SCM_MAKE_STR_COPYING(result);
+	  res = SCM_MAKE_STR_COPYING(string_result);
 	}
       } else {
 	res = SCM_FALSE;
       }
       break;
+
       /* linked list */
 #if LIBCURL_VERSION_NUM >= 0x070d03
     case CURLINFO_SSL_ENGINES:
 #if LIBCURL_VERSION_NUM >= 0x070e01
     case CURLINFO_COOKIELIST:
 #endif
-      (struct curl_slist *)result;
-      rc = curl_easy_getinfo(hnd, info, &result);
+      rc = curl_easy_getinfo(hnd, info, &slist_result);
       if ( rc == 0) {
-	if (result == NULL) {
+	if (slist_result == NULL) {
 	  res = SCM_FALSE;
 	} else {
-	  res = curl_slist_to_list(result);
+	  res = curl_slist_to_list(slist_result);
 	}
       } else {
 	res = SCM_FALSE;
       }
       break;
 #endif
+
       /* long */
     case CURLINFO_RESPONSE_CODE:
     case CURLINFO_HEADER_SIZE:
@@ -497,18 +530,14 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
 #if LIBCURL_VERSION_NUM >= 0x071304
     case CURLINFO_CONDITION_UNMET:
 #endif
-      (long *)result;
-      rc = curl_easy_getinfo(hnd, info, &result);
+      rc = curl_easy_getinfo(hnd, info, &long_result);
       if ( rc == 0) {
-	if (result == NULL) {
-	  res = SCM_FALSE;
-	} else {
-	  res = SCM_MAKE_INT(result);
-	}
+	res = SCM_MAKE_INT(long_result);
       } else {
 	res = SCM_FALSE;
       }
       break;
+
       /* double */
     case CURLINFO_TOTAL_TIME:
     case CURLINFO_NAMELOOKUP_TIME:
@@ -527,50 +556,128 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
 #if LIBCURL_VERSION_NUM >= 0x071300
     case CURLINFO_APPCONNECT_TIME:
 #endif
-      (double *)result;
-      rc = curl_easy_getinfo(hnd, info, &result);
+      rc = curl_easy_getinfo(hnd, info, &double_result);
       if ( rc == 0) {
-	if (result == NULL) {
-	  res = SCM_FALSE;
-	} else {
-	  res = SCM_MAKE_INT(result);
-	}
+	res = Scm_MakeFlonum(double_result); 
       } else {
 	res = SCM_FALSE;
       }
       break;
+
       /* struct curl_certinfo */
-/* #if LIBCURL_VERSION_NUM >= 0x071301 */
-/*     case CURLINFO_CERTINFO: */
-/*       (struct curl_certinfo *)result; */
-/*       rc = curl_easy_getinfo(hnd, info, &result); */
-/*       if ( rc == 0) { */
-/* 	if (result == NULL) { */
-/* 	  res = SCM_FALSE; */
-/* 	} else { */
-/* 	  int i; */
-/* 	  ScmObj head = SCM_NIL, tail = SCM_NIL;	  */
-/* 	  for (i=0; i < result.num_of_certs; i++) { */
-/* 	    struct curl_slist *slist; */
-/* 	    ScmObj head0 = SCM_NIL, tail0 = SCM_NIL; */
-/* 	    for (slist = result.certinfo[i]; slist; slist = slist->next) { */
-/* 	      SCM_APPEND1(head0, tail0, SCM_MAKE_STR_COPYING(slist->data)); */
-/* 	    } */
-/* 	    SCM_APPEND1(head, tail, head0); */
-/* 	  } */
-/* 	  res = head; */
-/* 	} */
-/*       } else { */
-/* 	res = SCM_FALSE; */
-/*       } */
-/*       break; */
-/* #endif */
+#if LIBCURL_VERSION_NUM >= 0x071301
+    case CURLINFO_CERTINFO:
+      rc = curl_easy_getinfo(hnd, info, &certs_result);
+
+      ScmObj certs, last;
+      certs = SCM_NIL;
+      last = SCM_NIL;
+
+      if (!rc && certs_result) {
+        int i;
+        for(i=0; i < certs_result->num_of_certs; i++) {
+          struct curl_slist *slist;
+          slist = certs_result->certinfo[i];
+	  SCM_APPEND1(certs, last, curl_slist_to_list(slist));
+	}
+	if SCM_NULLP(certs) {
+	  res = SCM_FALSE;
+	} else {
+	  res = certs;
+	}
+      } else {
+        res = SCM_FALSE;
+      }
+      break;
+#endif
       /* else */
     default:
       res = SCM_FALSE;
       break;
     }
   return res;
+}
+
+int _set_progress (CURLPROGRESS *prog, double dltotal, double dlnow, double ultotal, double ulnow) {
+  double progress, total;
+  double frac;
+  double percent;
+
+/*   printf("dlnow: %f\n", dlnow); */
+/*   printf("dltotal: %f\n", dltotal); */
+
+
+  progress = dlnow + ulnow;
+  total = dltotal + ultotal;
+
+/*   printf("progress: %f\n", progress); */
+/*   printf("total: %f\n", total); */
+  if (progress > total)
+    total = progress;
+  
+  frac = (double)progress / (double)total;
+  percent = frac * 100.0f;
+
+/*   printf("percent: %f\n", percent); */
+  prog->progress = progress;
+  prog->total = total;
+
+  return 0;
+}
+
+int _show_progress (CURLPROGRESS *prog, double dltotal, double dlnow, double ultotal, double ulnow) {
+  double progress, total;
+
+  char line[256];
+  char outline[256];
+  char format[40];
+  double frac;
+  double percent;
+  int barwidth;
+  int num;
+  int i;
+  char *colp;
+  colp = getenv("COLUMNS");
+  if (colp != NULL) {
+    barwidth= atoi(colp);
+  } else {
+    barwidth = 79;
+  }
+
+  barwidth = barwidth - 7;
+
+  progress = dlnow + ulnow;
+  total = dltotal + ultotal;
+
+  if (progress > total)
+    total = progress;
+
+  if (total < 1) {
+    double prevblock = prog->progress / 1024;
+    double block = progress / 1024;
+    while ( block > prevblock ) {
+      fprintf(stderr, "#" );
+      prevblock++;
+    }
+  }
+  else {
+    frac = (double)progress / (double)total;
+    percent = frac * 100.0f;
+    num = (int) (((double)barwidth) * frac);
+    for ( i = 0; i < num; i++ ) {
+      line[i] = '#';
+    }
+    line[i] = '\0';
+    snprintf( format, sizeof(format), "%%-%ds %%5.1f%%%%", barwidth );
+    snprintf( outline, sizeof(outline), format, line, percent );
+    fprintf( stderr, "\r%s", outline );
+  }
+
+  fflush(stderr);
+  prog->progress = (double)progress;
+  prog->total = (double)total;
+
+  return 0;
 }
 
 
@@ -608,17 +715,27 @@ void Scm_Init_curl(void)
     ScmCurl_SListClass =
       Scm_MakeForeignPointerClass(mod, "<curl-slist>",
 				  NULL,
-				  NULL,
+				  curlslist_cleanup,
 				  SCM_FOREIGN_POINTER_KEEP_IDENTITY|SCM_FOREIGN_POINTER_MAP_NULL);
 
     ScmCurl_FileClass =
       Scm_MakeForeignPointerClass(mod, "<curl-file>",
 				  NULL,
+				  curlfile_cleanup,
+				  SCM_FOREIGN_POINTER_KEEP_IDENTITY|SCM_FOREIGN_POINTER_MAP_NULL);
+
+    ScmCurl_ProgressClass =
+      Scm_MakeForeignPointerClass(mod, "<curl-progress>",
 				  NULL,
+				  curlprogress_cleanup,
+				  SCM_FOREIGN_POINTER_KEEP_IDENTITY|SCM_FOREIGN_POINTER_MAP_NULL);
+
+    ScmCurl_MsgClass =
+      Scm_MakeForeignPointerClass(mod, "<curl-msg>",
+				  NULL,
+				  curlmsg_cleanup,
 				  SCM_FOREIGN_POINTER_KEEP_IDENTITY|SCM_FOREIGN_POINTER_MAP_NULL);
 
     /* Register stub-generated procedures */
     Scm_Init_curllib(mod);
 }
-
-

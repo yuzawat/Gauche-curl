@@ -1,9 +1,9 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;; curllib.stub
 ;;; 
-;;; Last Updated: "2010/01/10 00:33.47"
+;;; Last Updated: "2010/05/05 16:02.40"
 ;;;
-;;;  Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
+;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
 "
 #include \"gauche-curl.h\"
@@ -29,6 +29,14 @@
 (define-type <curl-file> "FILE*" "curl-file"
   "SCMCURL_FILE_P" "SCMCURL_FILE_UNBOX" "SCMCURL_FILE_BOX")
 
+;; cURL progress
+(define-type <curl-progress> "CURLPROGRESS*" "curl-progress"
+  "SCMCURL_PROGRESS_P" "SCMCURL_PROGRESS_UNBOX" "SCMCURL_PROGRESS_BOX")
+
+;; cURL message
+(define-type <curl-msg> "CURLMsg*" "curl-msg"
+  "SCMCURL_MSG_P" "SCMCURL_MSG_UNBOX" "SCMCURL_MSG_BOX")
+
 ;; initialize global constants 
 (define-cproc curl-global-init (flags::<int>)
   (body <int>
@@ -48,16 +56,6 @@
 (define-cproc curl-easy-cleanup (hnd::<curl-base>)
   (call <void>
 	"curl_easy_cleanup(hnd);"))
-
-;; initialize multi handle
-(define-cproc curl-multi-init ()
-  (body <curl-multi-base>
-	"SCM_RESULT = curl_multi_init();"))
-
-;; cleanup easy handle
-(define-cproc curl-multi-cleanup (mhnd::<curl-multi-base>)
-  (call <int>
-	"curl_multi_cleanup(mhnd);"))
 
 ;; initialize share handle
 (define-cproc curl-share-init ()
@@ -127,7 +125,7 @@
 ; curl_slist_free_all:    not implement
 ;; Implemation of curl_slist_append() is difficult. And I gave up.
 ;; These functions are instead of it
-(define-cproc list->curl-slist (ls::<list>)
+(define-cproc curl-list->curl-slist (ls::<list>)
   (body <curl-slist> 
 	"SCM_RESULT = list_to_curl_slist(ls);"))
 
@@ -172,11 +170,11 @@
       ; sends raw data over an "easy" connection
       (define-cproc curl-easy-send (hnd::<curl-base> str::<const-cstring> length::<int> size::<int>)
 	(body <int>
-	      "SCM_RESULT = curl_easy_send(hnd, str, (size_t)length, (size_t*)size);"))
+	      "SCM_RESULT = curl_easy_send(hnd, str, (size_t)SCM_INT_VALUE(length), (size_t*)SCM_INT_VALUE(size));"))
       ; receives raw data on an "easy" connection
       (define-cproc curl-easy-recv (hnd::<curl-base> str::<string> length::<int> size::<int>)
 	(body <int>
-	      "SCM_RESULT = curl_easy_recv(hnd, str, (size_t)length, (size_t*)size);"))))
+	      "SCM_RESULT = curl_easy_recv(hnd, str, (size_t)SCM_INT_VALUE(length), (size_t*)SCM_INT_VALUE(size));"))))
 
 ; returns the libcurl version string
 (define-cproc curl-version ()
@@ -185,6 +183,15 @@
 ; returns run-time libcurl version info
 (define-cproc curl-version-info ()
   (call <list> "curl_version_info_list"))
+
+;; initialize multi handle
+(define-cproc curl-multi-init ()
+  (body <curl-multi-base>
+	"SCM_RESULT = curl_multi_init();"))
+
+(define-cproc curl-multi-cleanup (mhnd::<curl-multi-base>)
+  (call <int>
+	"curl_multi_cleanup(mhnd);"))
 
 ;; add a standard curl handle to the multi stack
 (define-cproc curl-multi-add-handle (mhnd::<curl-multi-base> hnd::<curl-base>)
@@ -197,11 +204,96 @@
 	"SCM_RESULT = curl_multi_remove_handle(mhnd, hnd);"))
 
 (define-cproc curl-multi-perform (mhnd::<curl-multi-base>)
-  (body <top>
-	"int result;"
-	"int *running_hanldles;"
-	"result = curl_multi_perform(mhnd, running_hanldles);"
-	"SCM_RESULT = Scm_Values2(SCM_MAKE_INT(result), SCM_MAKE_INT(running_hanldles));"))
+  (body <list>
+	"int rc;"
+	"int running_hanldles;"
+	"rc = curl_multi_perform(mhnd, &running_hanldles);"
+	"SCM_RESULT = Scm_Cons(SCM_MAKE_INT(rc), SCM_MAKE_INT(running_hanldles));"))
+
+(define-cproc curl-multi-fdset (mhnd::<curl-multi-base>)
+  (body <list>
+	"int rc, max, i;"
+	"ScmSysFdset *rset = SCM_NEW(ScmSysFdset);"
+	"ScmSysFdset *wset = SCM_NEW(ScmSysFdset);"
+	"ScmSysFdset *eset = SCM_NEW(ScmSysFdset);"
+	"SCM_SET_CLASS(rset, SCM_CLASS_SYS_FDSET);"
+	"SCM_SET_CLASS(wset, SCM_CLASS_SYS_FDSET);"
+	"SCM_SET_CLASS(eset, SCM_CLASS_SYS_FDSET);"
+	"FD_ZERO(&rset->fdset);"
+	"FD_ZERO(&wset->fdset);"
+	"FD_ZERO(&eset->fdset);"
+	"rc = curl_multi_fdset(mhnd, &rset->fdset, &wset->fdset, &eset->fdset, &max);"
+	"for (i = max; i > 0; i--) {"
+	"  if (FD_ISSET(i, &rset->fdset)) {"
+	"    rset->maxfd = i;"
+	"    break;"
+	"  }"
+	"}"
+	"for (i = max; i > 0; i--) {"
+	"  if (FD_ISSET(i, &wset->fdset)) {"
+	"    wset->maxfd = i;"
+	"    break;"
+	"  }"
+	"}"
+	"for (i = max; i > 0; i--) {"
+	"  if (FD_ISSET(i, &eset->fdset)) {"
+	"    eset->maxfd = i;"
+	"    break;"
+	"  }"
+	"}"
+	"if (rc == CURLM_OK) {"
+	"  SCM_RESULT = SCM_LIST3(SCM_OBJ(rset), SCM_OBJ(wset), SCM_OBJ(eset));"
+	"} else {"
+	"  SCM_RESULT = SCM_FALSE;"
+	"}"))
+
+(define-cproc curl-multi-info-read (mhnd::<curl-multi-base> msg_in_queue::<int>)
+  (body <curl-msg>
+	"SCM_RESULT = curl_multi_info_read(mhnd, &msg_in_queue);"))
+
+(define-cproc _curl-multi-info->list (mhnd::<curl-multi-base>)
+  (body <list>
+	"int msg_in_queue = -1;"
+	"CURLMsg *msg;"
+	"ScmObj results, last;"
+	"results = SCM_NIL;"
+	"last = SCM_NIL;"
+	"while ((msg = curl_multi_info_read(mhnd, &msg_in_queue))) {"
+	"  if (msg->msg == CURLMSG_DONE) {"
+	"    SCM_APPEND1(results, last, Scm_Cons(SCM_MAKE_INT(msg->data.result), SCMCURL_BOX(msg->easy_handle)));"
+	"  } else {"
+	"    SCM_RESULT = SCM_FALSE;"
+	"  }"
+	"}"
+	"SCM_RESULT = results;"))
+
+;; (>= 7.12.0)
+(if "LIBCURL_VERSION_NUM >= 0x070c00"
+    (define-cproc curl-multi-strerror (errno::<int>)
+      (call <const-cstring> 
+	    "curl_multi_strerror(errno);")))
+
+;; (>= 7.15.4)
+(if "LIBCURL_VERSION_NUM >= 0x070f04"
+    (begin
+      (define-cproc curl-multi-setopt (mhnd::<curl-multi-base> opt::<int> param::<top>)
+	(body <int>
+	      "CURLMoption curlmopt = opt;"
+	      "if (SCM_NUMBERP(param)) {"
+	      "  SCM_RESULT = curl_multi_setopt(mhnd, curlmopt, (long)SCM_INT_VALUE(param));"
+	      "} else if (SCM_STRINGP(param)) {"
+	      "  SCM_RESULT = curl_multi_setopt(mhnd, curlmopt, SCM_STRING_CONST_CSTRING(param));"
+	      "} else if (SCM_FALSEP(param)) {"
+	      "  SCM_RESULT = curl_multi_setopt(mhnd, curlmopt, NULL);"
+	      "} else {"
+	      "  SCM_RESULT = CURLE_GOT_NOTHING;"
+	      "}"))
+
+      (define-cproc curl-multi-timeout (mhnd::<curl-multi-base> timeout::<int>)
+	(body <int>
+	      "long t = (long)timeout;"
+	      "SCM_RESULT = curl_multi_timeout(mhnd, &t);"))))
+
 
 ; set option
 (define-cproc curl-share-setopt (hnd::<curl-share-base> opt::<int> param::<top>)
@@ -234,6 +326,28 @@
   (body <top>
 	"SCM_RESULT = curl_close_file(fp);"))
 
+;; ; Progress Function
+(define-cproc curl-set-progress-options (hnd::<curl-base>)
+  (body <top>
+	"CURLPROGRESS *prog;"
+	"curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 0);"
+	"curl_easy_setopt(hnd, CURLOPT_PROGRESSFUNCTION, _set_progress);"
+	"curl_easy_setopt(hnd, CURLOPT_PROGRESSDATA, &prog);"
+	"SCM_RESULT = SCM_OBJ(prog);"))
+
+(define-cproc curl-set-progress-options-show (hnd::<curl-base>)
+  (body <top>
+	"CURLPROGRESS *prog;"
+	"curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 0);"
+	"curl_easy_setopt(hnd, CURLOPT_PROGRESSFUNCTION, _show_progress);"
+	"curl_easy_setopt(hnd, CURLOPT_PROGRESSDATA, &prog);"
+	"SCM_RESULT = SCM_OBJ(prog);"))
+
+(define-cproc curl-get-progress-numbers (prog::<top>)
+  (body <list>
+	"CURLPROGRESS *prog_p;"
+	"prog_p = SCMCURL_PROGRESS_UNBOX(&prog);"
+	"SCM_RESULT = SCM_LIST2(Scm_MakeFlonum(prog_p->total), Scm_MakeFlonum(prog_p->total));"))
 
 ;; global flags
 (define-enum CURL_GLOBAL_ALL)
@@ -492,6 +606,21 @@
       (define-enum CURLOPT_SSH_KNOWNHOSTS)
       (define-enum CURLOPT_SSH_KEYFUNCTION)
       (define-enum CURLOPT_SSH_KEYDATA)))
+; (>= 7.20.0)
+(if "LIBCURL_VERSION_NUM >= 0x071400"
+    (begin 
+      (define-enum CURLOPT_RTSP_REQUEST)
+      (define-enum CURLOPT_RTSP_SESSION_ID)
+      (define-enum CURLOPT_RTSP_STREAM_URI)
+      (define-enum CURLOPT_RTSP_TRANSPORT)
+      #;(define-enum CURLOPT_RTSP_HEADER)
+      (define-enum CURLOPT_RTSP_CLIENT_CSEQ)
+      (define-enum CURLOPT_RTSP_SERVER_CSEQ)
+      (define-enum CURLOPT_INTERLEAVEFUNCTION)
+      (define-enum CURLOPT_INTERLEAVEDATA)
+      (define-enum CURLOPT_MAIL_FROM)
+      (define-enum CURLOPT_MAIL_RCPT)
+      (define-enum CURLOPT_FTP_USE_PRET)))
 
 (define-enum CURLOPTTYPE_OFF_T)
 
@@ -885,6 +1014,22 @@
       (define-enum CURLKHSTAT_FINE)
       (define-enum CURLKHSTAT_REJECT)
       (define-enum CURLKHSTAT_DEFER)))
+
+;; RTSP enum values require by CURLOPT_RTSP_REQUEST
+; (>= 7.20.0)
+(if "LIBCURL_VERSION_NUM >= 0x071400"
+    (begin 
+      (define-enum CURL_RTSPREQ_OPTIONS)
+      (define-enum CURL_RTSPREQ_DESCRIBE)
+      (define-enum CURL_RTSPREQ_ANNOUNCE)
+      (define-enum CURL_RTSPREQ_SETUP)
+      (define-enum CURL_RTSPREQ_PLAY)
+      (define-enum CURL_RTSPREQ_PAUSE)
+      (define-enum CURL_RTSPREQ_TEARDOWN)
+      (define-enum CURL_RTSPREQ_GET_PARAMETER)
+      (define-enum CURL_RTSPREQ_SET_PARAMETER)
+      (define-enum CURL_RTSPREQ_RECORD)
+      (define-enum CURL_RTSPREQ_RECEIVE)))
 
 ;; Local variables:
 ;; mode: scheme

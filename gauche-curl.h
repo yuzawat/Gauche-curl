@@ -2,9 +2,9 @@
 /*
  * curl.h
  *
- * Last Updated: "2009/08/03 19:32.14"
+ * Last Updated: "2010/05/05 18:17.42"
  *
- * Copyright (c) 2009  yuzawat <suzdalenator@gmail.com>
+ * Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
  */
 
 /* Prologue */
@@ -13,7 +13,9 @@
 
 #include <gauche.h>
 #include <gauche/extend.h>
+#include <gauche/system.h>
 #include <fcntl.h>
+#include <sys/select.h>
 
 #include <curl/curl.h>
 
@@ -49,6 +51,22 @@ extern ScmClass *ScmCurl_FileClass;
 #define SCMCURL_FILE_UNBOX(obj) SCM_FOREIGN_POINTER_REF(FILE*, obj)
 #define SCMCURL_FILE_BOX(ptr) Scm_MakeForeignPointer(ScmCurl_FileClass, ptr)
 
+/* <curl-progress> */
+typedef struct curl_progress_t {
+  double progress;
+  double total;
+} CURLPROGRESS;
+extern ScmClass *ScmCurl_ProgressClass;
+#define SCMCURL_PROGRESS_P(obj) SCM_XTYPEP(obj, ScmCurl_FileClass)
+#define SCMCURL_PROGRESS_UNBOX(obj) SCM_FOREIGN_POINTER_REF(CURLPROGRESS*, obj)
+#define SCMCURL_PROGRESS_BOX(ptr) Scm_MakeForeignPointer(ScmCurl_ProgressClass, ptr)
+
+/* <curl-msg> */
+extern ScmClass *ScmCurl_MsgClass;
+#define SCMCURL_MSG_P(obj) SCM_XTYPEP(obj, ScmCurl_MsgClass)
+#define SCMCURL_MSG_UNBOX(obj) SCM_FOREIGN_POINTER_REF(CURLMsg*, obj)
+#define SCMCURL_MSG_BOX(ptr) Scm_MakeForeignPointer(ScmCurl_MsgClass, ptr)
+
 /* I/O  */
 extern FILE *curl_open_file(CURL *hnd, int type, const char *fn);
 extern ScmObj curl_open_port(CURL *hnd, int type, ScmObj *scm_port);
@@ -67,6 +85,8 @@ extern size_t read_from_port(void *buffer, size_t sz, size_t nmemb, void *scm_po
 /* CURLOPT_SOCKOPTFUNCTION */
 /* CURLOPT_OPENSOCKETFUNCTION */
 /* CURLOPT_PROGRESSFUNCTION */
+int _set_progress (CURLPROGRESS *prog, double dltotal, double dlnow, double ultotal, double ulnow);
+int _show_progress (CURLPROGRESS *prog, double dltotal, double dlnow, double ultotal, double ulnow);
 
 /* misc */
 extern ScmObj curl_version_info_list(void);
