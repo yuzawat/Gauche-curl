@@ -1,9 +1,9 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;;
 ;;; libcurl binding for gauche
-;;;  libcurl: <http://curl.haxx.se/libcurl/>
+;;;  libcurl version 7.20.1: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/05/06 00:20.43"
+;;; Last Updated: "2010/05/07 00:17.11"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -33,11 +33,10 @@
   (export 
    <curl>
    <curl-multi>
-
    <curl-base>
    <curl-multi-base>
-
    <curl-error>
+   <curl-progress>
 
    ;; bare functions
    curl-global-init
@@ -70,7 +69,6 @@
    curl-multi-strerror
    curl-multi-timeout
    curl-multi-info-read
-   curl-multi-info-read->list
 
    curl-share-init
    curl-share-setopt
@@ -86,7 +84,6 @@
    curl-list->curl-slist
    curl-slist->list
 
-   <curl-progress>
    curl-set-progress-options
    curl-get-progress-numbers
 
@@ -104,7 +101,6 @@
    curl-handler-remove!
    curl-timeout!
    curl-fdset
-   curl-info-read
    curl-multi-info->list
    curl-async-perform
 
@@ -393,7 +389,7 @@
    CURLOPT_RTSP_SESSION_ID
    CURLOPT_RTSP_STREAM_URI
    CURLOPT_RTSP_TRANSPORT
-   CURLOPT_RTSP_HEADER
+   #;CURLOPT_RTSP_HEADER
    CURLOPT_RTSP_CLIENT_CSEQ
    CURLOPT_RTSP_SERVER_CSEQ
    CURLOPT_INTERLEAVEFUNCTION
@@ -571,6 +567,7 @@
        :accessor rc-of
        :init-value #f)))
 
+; easy interface
 (define-class <curl> (<curl-meta>)
   ((url :allocation :instance
 	:init-keyword :url
@@ -599,6 +596,49 @@
 (define-method object-apply ((curl <curl>))
   (curl-perform curl))
 
+; multi interface
+(define-class <curl-multi> (<curl-meta>)
+  ((handlers :allocation :instance
+	     :init-value '()
+	     :accessor handlers-of)
+   (remains :allocation :instance
+	    :init-value 0
+	    :accessor remains-of)
+   (timeout :allocation :instance
+	    :init-keyword :timeout
+	    :init-value 0
+	    :accessor timeout-of)
+   (maxconnect :allocation :instance
+	       :init-keyword :maxconnect
+	       :init-value 10
+	       :accessor maxconnect-of)
+   (pipelining :allocation :instance
+	       :init-keyword :pipelining
+	       :init-value #f
+	       :accessor pipilining-of)))
+
+(define-method initialize ((curlm <curl-multi>) initargs)
+  (next-method)
+  (slot-set! curlm 'handler (curl-multi-init))
+  (and (vc "7.15.4") (not (= (timeout-of curlm) 0)) 
+       (curl-multi-timeout (handler-of curlm) (timeout-of curlm)))
+  (and (vc "7.16.0") (pipilining-of curlm)
+       (curl-setopt! curlm CURLMOPT_PIPELINING 1))
+  (and (vc "7.16.3") (not (= (maxconnect-of curlm) 10)) 
+       (curl-setopt! curlm CURLMOPT_MAXCONNECTS (maxconnect-of curlm))))
+
+(define-method object-apply ((curlm <curl-multi>))
+  (curl-perform curlm))
+
+; share interface
+(define-class <curl-share> (<curl-meta> <singleton-mixin>)
+  ())
+
+(define-method initialize ((share <curl-share>) initargs)
+  (next-method)
+  (slot-set! share 'handler (curl-share-init))
+  (curl-share-setopt (handler-of share) CURLSHOPT_SHARE CURL_LOCK_DATA_COOKIE)
+  (curl-share-setopt (handler-of share) CURLSHOPT_SHARE CURL_LOCK_DATA_DNS))
 
 ;; condition
 (define-condition-type <curl-error> <error> 
@@ -623,7 +663,6 @@
 (define (sc str url)
   (let1 scheme (values-ref (uri-parse url) 0)
     (if ((string->regexp str) scheme) #t #f)))
-
 
 ; parse options
 (define-method %easy-options ((curl <curl>) args)
@@ -1072,7 +1111,6 @@
 	(when mail-rcpt	(_ curl CURLOPT_MAIL_RCPT (string-split mail-rcpt #\,)))
 	(when mail-from (_ curl CURLOPT_MAIL_FROM mail-from))))))
 
-
 ;; fflush
 ;;        (buffer "buffer" #f)
 ;;        (no-buffer "N|no-buffer" #f) 
@@ -1227,55 +1265,7 @@
 	(if (= rc 0) #t #f))
       (error <curl-error> "This method is unsupported in this version of libcurl.")))
 
-
 ; multi interface
-(define-class <curl-multi> (<curl-meta>)
-  ((handlers :allocation :instance
-	     :init-value '()
-	     :accessor handlers-of)
-   (remains :allocation :instance
-	    :init-value 0
-	    :accessor remains-of)
-   (timeout :allocation :instance
-	    :init-keyword :timeout
-	    :init-value 0
-	    :accessor timeout-of)
-   (maxconnect :allocation :instance
-	       :init-keyword :maxconnect
-	       :init-value 10
-	       :accessor maxconnect-of)
-   (pipelining :allocation :instance
-	       :init-keyword :pipelining
-	       :init-value #f
-	       :accessor pipilining-of)))
-
-(define-method initialize ((curlm <curl-multi>) initargs)
-  (next-method)
-  (slot-set! curlm 'handler (curl-multi-init))
-  (and (vc "7.15.4") (not (= (timeout-of curlm) 0)) 
-       (curl-multi-timeout (handler-of curlm) (timeout-of curlm)))
-  (and (vc "7.16.0") (pipilining-of curlm)
-       (curl-setopt! curlm CURLMOPT_PIPELINING 1))
-  (and (vc "7.16.3") (not (= (maxconnect-of curlm) 10)) 
-       (curl-setopt! curlm CURLMOPT_MAXCONNECTS (maxconnect-of curlm))))
-
-(define-method object-apply ((curlm <curl-multi>))
-  (curl-perform curlm))
-
-(define-method curl-cleanup! ((curlm <curl-multi>))
-  (let1 hnd (handler-of curlm)
-    (if hnd
-	(let1 res (curl-multi-cleanup hnd)
-	  (cond ((= res 0)
-		 (for-each (cut curl-cleanup! <>) (handlers-of curlm))
-		 (slot-set! curlm 'handlers '())
-		 (slot-set! curlm 'rc #f)
-		 #t)
-		(else 
-		 (slot-set! curlm 'rc rc)
-		 #f)))
-	(error <curl-error> :message "curl multi handler is invalid."))))
-
 (define-method curl-setopt! ((curlm <curl-multi>) opt val)
   (if (vc "7.15.4")
       (let1 hnd (handler-of curlm)
@@ -1285,6 +1275,9 @@
 	      (if (= res 0) #t #f))
 	    (error <curl-error> :message "curl multi handler is invalid.")))
       (error <curl-error> "This method is unsupported in this version of libcurl.")))
+
+(define-method curl-timeout! ((curlm <curl-multi>) seconds)
+  (curl-multi-timeout (handler-of curlm) seconds))
 
 (define-method curl-handler-add! ((curlm <curl-multi>) (curl <curl>))
   (let1 res (curl-multi-add-handle (handler-of curlm) (handler-of curl))
@@ -1309,6 +1302,20 @@
     (update-multi-results! curlm)
     (if (<= (slot-ref curlm 'rc) 0) #t
 	#f)))
+
+(define-method curl-cleanup! ((curlm <curl-multi>))
+  (let1 hnd (handler-of curlm)
+    (if hnd
+	(let1 res (curl-multi-cleanup hnd)
+	  (cond ((= res 0)
+		 (for-each (cut curl-cleanup! <>) (handlers-of curlm))
+		 (slot-set! curlm 'handlers '())
+		 (slot-set! curlm 'rc #f)
+		 #t)
+		(else 
+		 (slot-set! curlm 'rc rc)
+		 #f)))
+	(error <curl-error> :message "curl multi handler is invalid."))))
 
 (define-method curl-strerror ((curlm <curl-multi>))
   (if (vc "7.12.0")
@@ -1338,14 +1345,21 @@
     (apply sys-select (append (curl-fdset curlm) '(50000)))))
 
 ; share interface
-(define-class <curl-share> (<curl-meta> <singleton-mixin>)
-  ())
+(define-method curl-setopt! ((share <curl-share>) opt val)
+  (let1 hnd (handler-of curlm)
+    (if hnd 
+	(let1 res (curl-share-setopt (handler-of share) opt val)
+	  (slot-set! share 'rc res)
+	  (if (= res 0) #t #f))
+	(error <curl-error> :message "curl share handler is invalid."))))
 
-(define-method initialize ((share <curl-share>) initargs)
-  (next-method)
-  (slot-set! share 'handler (curl-share-init))
-  (curl-share-setopt (handler-of share) CURLSHOPT_SHARE CURL_LOCK_DATA_COOKIE)
-  (curl-share-setopt (handler-of share) CURLSHOPT_SHARE CURL_LOCK_DATA_DNS))
+(define-method curl-cleanup! ((share <curl-share>))
+  (let1 hnd (handler-of share)
+    (if hnd
+	(let1 res (curl-share-cleanup hnd)
+	  (slot-set! share 'rc res)
+	  (if (= res 0) #t #f))
+	(error <curl-error> :message "curl share handler is invalid."))))
 
 (define-method curl-strerror ((share <curl-share>))
   (if (vc "7.12.0")
@@ -1416,7 +1430,7 @@
 				(error <curl-error> :message "Set output port."))))
 	(error <curl-error> :message "curl handler is invalid."))))
 
-;utils
+; utils
 (define (curl-headers->alist headers-str . num)
   (let1 ls (remove null? (map (lambda  (h) (rfc822-read-headers (open-input-string h)))
 			      (string-split headers-str "\r\n\r\n")))
@@ -1425,7 +1439,7 @@
 	  (if (>= n 0) (list-ref ls n)
 	      (list-ref ls (- (length ls) 1)))))))
 
-; progress
+; progress functions
 (define-method curl-set-progress! ((curl <curl>) . show-bar)
   (if (not (slot-ref curl 'progress))
       (if (null? show-bar)
@@ -1438,8 +1452,9 @@
       (curl-get-progress-numbers (slot-ref curl 'progress))
       '()))
 
-; wrapper procedure
-;; Common
+
+;; wrapper procedure
+; Common
 (define (http-common method hostname path body . opts)
   (let-keywords opts ((no-redirect :no-redirect #f)
 		      (sink :sink #f)
@@ -1478,23 +1493,23 @@
 (define http-user-agent 
   (make-parameter (string-append "gauche.http/" (gauche-version) " (" (curl-version) ")")))
 
-;; GET
+; GET
 (define (http-get hostname path . opt)
   (apply http-common 'GET hostname path #f opt))
 
-;; HEAD
+; HEAD
 (define (http-head hostname path . opt)
   (apply http-common 'HEAD hostname path #f opt))
 
-;; POST
+; POST
 (define (http-post hostname path body . opt)
   (apply http-common 'POST hostname path body opt))
 
-;; PUT
+; PUT
 (define (http-put hostname path body . opt)
   (apply http-common 'PUT hostname path body opt))
 
-;; DELETE
+; DELETE
 (define (http-delete hostname path . opt)
   (apply http-common 'DELETE hostname path #f opt))
 
