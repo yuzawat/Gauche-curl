@@ -2,7 +2,7 @@
 /*
  * curl.h
  *
- * Last Updated: "2010/05/05 18:17.42"
+ * Last Updated: "2010/05/08 23:37.20"
  *
  * Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
  */
@@ -83,6 +83,7 @@ extern size_t read_from_port(void *buffer, size_t sz, size_t nmemb, void *scm_po
 /* CURLOPT_IOCTLFUNCTION */
 /* CURLOPT_SEEKFUNCTION */
 /* CURLOPT_SOCKOPTFUNCTION */
+int _set_socket_option(void *clientp, curl_socket_t curlfd, curlsocktype purpose);
 /* CURLOPT_OPENSOCKETFUNCTION */
 /* CURLOPT_PROGRESSFUNCTION */
 int _set_progress (CURLPROGRESS *prog, double dltotal, double dlnow, double ultotal, double ulnow);

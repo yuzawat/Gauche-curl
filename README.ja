@@ -6,7 +6,7 @@ Abstract:
  
 Author: yuzawat <suzdalenator ＠ gmail.coml>
 
-Version: 0.2.0 2010/05/05
+Version: 0.2.1 2010/05/08
 ======================================================================
 
 Module: curl
@@ -47,6 +47,9 @@ Instance Variable of <curl>: options
  オプションの書式や意味は、curl(1)のバージョン 7.20.1に 基本的に準拠しています。
  ただし、コマンドラインパーザの制限で、curlと全て同じ動作にはなっていません。例えばcurl(1)には同じオプションを複数渡すと、値も複数受け取る動作があるのですが、それには従っていません（-H,--headerは、複数指定することでHTTPのヘッダをその数だけ追加できるのですが、それと同じ動作はできません。-H,--headerについては、カンマ(,)で連結した文字列を引数とすることで複数指定に対応しています）。
  上記の制限があるので、options での設定がむずかしいものは、curl-setopt!を直接使用して下さい。
+
+Instance Variable of <curl>: no-option
+ ハンドラーへのデフォルトのオプション設定を無効化します。デフォルトの動作では options の機能で、curl(1)の動作に準じて、暗黙のうちに設定される設定値があります。no-option が #t の場合は、options が行なう設定をすべてスキップします。デフォルトは #f です。
 
 Instance Variable of <curl>: http-headers
  HTTPのヘッダーが、文字列のリストで入っています。options経由("--header=hoge:hoge")でも、直接、curl-setopt!での指定(curl-setopt! curl CURLOPT_HTTPHEADER '("hoge:hoge"))を行っても、ここに反映されます。
@@ -286,14 +289,170 @@ Function: curl-slist->list curl_slist
  Schemeの文字列のリストと、<curl-slist>を相互に変換します。
 
 ======================================================================
+- curl(1)互換の簡易インターフェース(:options)でサポートされているのは以下の通りです
+ A|user-agent
+ L|location
+   location-trusted
+ X|request
+ o|output
+ O|remote-name
+ R|remote-time
+ D|dump-header
+   stderr
+ v|verbose
+   ignore-content-length
+ e|referer
+   interface
+   url
+   tcp-nodelay
+   compressed  
+ u|user
+   basic
+   digest
+   negotiate
+   ntlm
+   anyauth
+ f|fail
+ i|include
+ I|head
+ G|get
+ H|header
+ x|proxy
+   proxy1.0
+   socks4
+   socks4a
+   socks5
+   socks5-gssapi-nec
+   socks5-gssapi-service
+   socks5-hostname
+ p|proxytunnel
+   noproxy
+ U|proxy-user
+   proxy-anyauth
+   proxy-basic
+   proxy-digest
+   proxy-negotiate
+   proxy-ntlm
+   post301
+   post302
+ T|upload-file
+ j|junk-session-cookies
+ b|cookie
+ c|cookie-jar
+ d|data|data-ascii
+   data-binary
+   data-urlencode
+   max-filesize
+   max-redirs
+   connect-timeout
+ m|max-time
+ 0|http1.0
+   raw
+ z|time-cond
+ r|range
+   local-port
+ 4|ipv4
+ 6|ipv6
+   ssl
+   ssl-reqd
+ 1|tlsv1
+ 2|sslv2
+ 3|sslv3
+   cacert
+   capath
+   cert-type 
+   ciphers
+   random-file
+   egd-file
+   engine
+   sessionid
+   no-sessionid
+ E|cert
+   key
+   key-type
+   pass
+ k|insecure
+   pubkey
+   crlfile
+   hostpubmd5
+ P|ftp-port
+   ftp-pasv
+ Q|quote
+ l|list-only
+ a|append
+   ftp-create-dirs
+ B|use-ascii
+   crlf
+   disable-eprt
+   disable-epsv
+   no-eprt
+   no-epsv
+   eprt
+   epsv
+   ftp-skip-pasv-ip
+   ftp-alternative-to-user
+   ftp-account
+   ftp-method
+   krb
+   ftp-ssl
+   ftp-ssl-control
+   ftp-ssl-reqd
+   ftp-ssl-ccc
+   ftp-ssl-ccc-mode
+ t|telnet-option
+   tftp-blksize
+   mail-rcpt
+   mail-from
+ #|progress-bar
+ Y|speed-limit
+ y|speed-time
+   limit-rate
+ C|continue-at（引数"-"はサポートせず）
+   no-keepalive
+   keepalive
+   keepalive-time
+
+
+- 以下のものは同じ文字列での指定ができませんので提示されているように書き換えをお願いします。
+ --http1.0 => --http1_0
+ --proxy1.0 => --proxy1_0
+ -# => なし（--progress-bar で指定してください）
+
+
+- 以下はサポートされません。
+   create-dirs
+ s|silent
+ q
+ K|config
+ n|netrc
+   netrc-optional
+ S|show-error
+   environment
+   trace
+   trace-ascii
+   trace-time
+ w|write-out
+   retry
+   retry-delay
+   retry-max-time
+   buffer
+ N|no-buffer
+
+   form-string
+ g|globoff
+   remote-name-all
+
+======================================================================
+
 Todo
 - 未テストのプロトコルの動作確認
 - データアップロード関連の十分なテスト
 - test.scmをもう少しましに
 
+
 制限事項
-- curl独自のURLのワイルドカードをサポートしていません（実装するか未定）。
-- HTTP POST FORMデータ生成の機能が未実装です。
+- curl独自のURLのワイルドカードをサポートしていません。
+- HTTP POST FORMデータ生成の機能をサポートしていません。
 - 以下のlibcurl関数のバインディングは未実装、もしくは利用しやすいインターフェイスを作っていません。
  curl_easy_pause 
  curl_easy_recv 
@@ -306,45 +465,10 @@ Todo
  curl_multi_assign 
  curl_multi_socket 
 
-- curl(1)互換の簡易インターフェース(:options)で、以下のものは同じ文字列での指定ができませんので提示されているように書き換えをお願いします。
- --http1.0 => --http1_0
- --proxy1.0 => --proxy1_0
-
-- curl(1)互換の簡易インターフェース(:options)で、以下のものが未実装です。
- --buffer
- -#|--progress-bar
- --create-dirs
- --environment
- --form-string
- --keepalive
- --limit-rate 
- --netrc-optional
- --no-keepalive
- --remote-name-all
- --retry
- --retry-delay
- --retry-max-time
- --trace
- --trace-ascii
- --trace-time
- -C|--continue-at
- -F|--form
- -K|--config
- -N|--no-buffer
- -S|--show-error
- -Y|--speed-limit
- -g|--globoff
- -n|--netrc
- -q
- -s|--silent
- -w|--write-out
- -y|--speed-time
- -z|--time-cond
- --keepalive-time
-
 
 動作確認環境（と云っても、"make check"が通るだけ）
-- Mac OX X 10.6.3 (libcurl 7.21.1. + Gauche 0.9)
+- Mac OX X 10.6.3 (libcurl 7.21.0. + Gauche 0.9)
+- Ubuntu 9.04 Jaunty (libcurl 7.21.1. + Gauche 0.9)
 - Mac OX X 10.6.2 (libcurl 7.19.7. + Gauche 0.9)
 - Mac OX X 10.5.8 (libcurl 7.16.3 + Gauche 0.8.14)
 - Mac OX X 10.5.8 (libcurl 7.19.3 + Gauche 0.8.14)

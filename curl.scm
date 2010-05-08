@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl version 7.20.1: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/05/07 00:17.11"
+;;; Last Updated: "2010/05/08 22:44.38"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -86,6 +86,8 @@
 
    curl-set-progress-options
    curl-get-progress-numbers
+
+   curl-set-socket-options
 
    ;; procedure
    curl-setopt!
@@ -535,6 +537,9 @@
    CURL_TIMECOND_IFUNMODSINCE
    CURL_TIMECOND_LASTMOD
 
+   ;; curl socktype
+   CURLSOCKTYPE_IPCXN
+
    ;; RTSP enum values
    CURL_RTSPREQ_OPTIONS
    CURL_RTSPREQ_DESCRIBE
@@ -577,6 +582,10 @@
 	    :init-keyword :options
 	    :init-value ""
 	    :accessor options-of)
+   (no-option :allocation :instance
+	      :init-keyword :no-option
+	      :init-value #f
+	      :accessor no-option-of)
    (progress :allocation :instance
 	     :init-keyword :progress
 	     :init-value #f
@@ -590,8 +599,9 @@
   (slot-set! curl 'handler (curl-easy-init))
   (when (slot-bound? curl 'url)
     (curl-setopt! curl CURLOPT_URL (url-of curl)))
-  (when (slot-bound? curl 'options)
-    (%easy-options curl (options-of curl))))
+  (unless (no-option-of curl)
+    (when (slot-bound? curl 'options)
+      (%easy-options curl (options-of curl)))))
 
 (define-method object-apply ((curl <curl>))
   (curl-perform curl))
@@ -663,6 +673,17 @@
 (define (sc str url)
   (let1 scheme (values-ref (uri-parse url) 0)
     (if ((string->regexp str) scheme) #t #f)))
+; limit rate unit parser
+(define (parse-unit limit-rate)
+  (let1 byte-num ((string->regexp "^(\\d+)([GgMmKkBb]?)$") limit-rate)
+    (if byte-num
+	(let ((num (string->number (byte-num 1)))
+	      (unit (byte-num 2)))
+	  (cond ((#/[Gg]/ unit) (* num 1024 1024 1024))
+		((#/[Mm]/ unit) (* num 1024 1024))
+		((#/[Kk]/ unit) (* num 1024))
+		(else num)))
+	(error <curl-error> :message "unsupported rate unit"))))
 
 ; parse options
 (define-method %easy-options ((curl <curl>) args)
@@ -772,7 +793,7 @@
 	 (ftp-skip-pasv-ip "ftp-skip-pasv-ip" #f)
 	 (ftp-alternative-to-user "ftp-alternative-to-user=s" #f)
 	 (ftp-account "ftp-account=s" #f)
-	 (ftp-method "ftp-method=s"#f )
+	 (ftp-method "ftp-method=s" #f)
 	 (krb "krb=s" #f)
 	 (ftp-ssl "ftp-ssl" #f)
 	 (ftp-ssl-control "ftp-ssl-control" #f)
@@ -782,7 +803,19 @@
 	 (telnet-option "t|telnet-option=s" #f)
 	 (tftp-blksize "tftp-blksize=i" 512)
 	 (mail-rcpt "mail-rcpt=s" #f)
-	 (mail-from "mail-from=s" #f))
+	 (mail-from "mail-from=s" #f)
+	 (progress-bar "progress-bar" #f)
+	 (speed-limit "Y|speed-limit=i" #f)
+	 (speed-time "y|speed-time=i" #f)
+	 (limit-rate "limit-rate=s" #f)
+	 (continue-at "C|continue-at=i" #f)
+	 (no-keepalive "no-keepalive" #f)
+	 (keepalive "keepalive" #f)
+	 (keepalive-time "keepalive-time=i" #f)
+	 ;; not implemented yet
+	 (form-string "form-string=s" #f)
+	 (globoff "g|globoff" #f)
+	 (remote-name-all "remote-name-all" #f))
       ;; common
       (when urlstr (begin (_ curl CURLOPT_URL urlstr) (set! (url-of curl) urlstr)))
       (when curl-share-enable (_ curl CURLOPT_SHARE (handler-of (make <curl-share>))))
@@ -801,6 +834,30 @@
 			(_ curl CURLOPT_LOCALPORT (string->number (m 1)))
 			(when (m 3) (_ curl CURLOPT_LOCALPORTRANGE (string->number (m 3)))))))
 		(else <curl-error> :message "local port range is invalid."))))
+      (let1 resume (if continue-at continue-at 0)
+	(if (fc "Largefile")
+	    (_ curl CURLOPT_RESUME_FROM_LARGE resume)
+	    (_ curl CURLOPT_RESUME_FROM resume)))
+      (when progress-bar (curl-set-progress! curl #t))
+      ;; speed
+      (when speed-time
+	(begin 
+	  (_ curl CURLOPT_LOW_SPEED_TIME speed-time)
+	  (unless speed-limit (_ curl CURLOPT_LOW_SPEED_LIMIT 1))))
+      (when speed-limit 
+	(begin 
+	  (_ curl CURLOPT_LOW_SPEED_LIMIT speed-limit)
+	  (unless speed-time (_ curl CURLOPT_LOW_SPEED_TIME 30))))
+      (when limit-rate
+	(let1 rate (parse-unit limit-rate)
+	  (_ curl CURLOPT_BUFFERSIZE rate)
+	  (_ curl CURLOPT_MAX_SEND_SPEED_LARGE rate)
+	  (_ curl CURLOPT_MAX_RECV_SPEED_LARGE rate)))
+      ;; socket function
+      (unless no-keepalive
+	(curl-set-socket-options hnd (if (vc "7.18.0")
+					  (if keepalive-time keepalive-time 0)
+					  0)))
       ;; debug
       (if verbose (_ curl CURLOPT_VERBOSE 1) (_ curl CURLOPT_VERBOSE 0))
       (when stderr (curl-open-file hnd CURLOPT_STDERR stderr))
@@ -1110,42 +1167,6 @@
       (when (and (pc "smtp") (vc "7.20.0"))
 	(when mail-rcpt	(_ curl CURLOPT_MAIL_RCPT (string-split mail-rcpt #\,)))
 	(when mail-from (_ curl CURLOPT_MAIL_FROM mail-from))))))
-
-;; fflush
-;;        (buffer "buffer" #f)
-;;        (no-buffer "N|no-buffer" #f) 
-;; CURLOPT_SOCKOPTFUNCTION, CURLOPT_SOCKOPTDATA
-;;        (no-keepalive "no-keepalive" #f)
-;;        (keepalive "keepalive" #f) 
-;; CURLOPT_BUFFERSIZE, CURLOPT_MAX_SEND_SPEED
-;;        (limit-rate "limit-rate=s" )
-
-;; multi interface
-;;        (remote-name-all "remote-name-all" #f)
-;;        (globoff "g|globoff" #f)
-;; may not implementaion
-;;        (progress-bar "#|progress-bar" #f)
-;;        (environment "environment" #f)
-
-;;        (create-dirs "create-dirs" #f)
-;;        (form-string "form-string=s" )
-;;        (netrc-optional "netrc-optional" #f)
-;;        (retry "retry=s" )
-;;        (retry-delay "retry-delay=s" )
-;;        (retry-max-time "retry-max-time=s" )
-;;        (trace "trace=s" )
-;;        (trace-ascii "trace-ascii=s" )
-;;        (trace-time "trace-time" #f)
-;;        (continue-at "C|continue-at=s" )
-;;        (config "K|config=s" )
-;;        (netrc "n|netrc" #f)
-;;        (show-error "S|show-error" #f)
-;;        (speed-limit "Y|speed-limit=s" )
-;;        (speed-time "y|speed-time=s" )
-;;        (q "q" #f)
-;;        (silent "s|silent" #f)
-;;        (write-out "w|write-out=s" )
-;;        (keepalive-time "keepalive-time=i" #f)
 
 ; procedure
 ; easy interface

@@ -2,12 +2,19 @@
 /*
  * curl.c
  *
- * Last Updated: "2010/05/05 21:11.00"
+ * Last Updated: "2010/05/08 22:31.55"
  *
  * Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
  */
 
 #include "gauche-curl.h"
+
+#ifdef HAVE_NETINET_IN_H
+#include <netinet/in.h> /* for IPPROTO_TCP */
+#endif
+#ifdef HAVE_NETINET_TCP_H
+#include <netinet/tcp.h> /* for TCP_KEEPIDLE, TCP_KEEPINTVL */
+#endif
 
 /*
  * The following function is a dummy one; replace it for
@@ -681,6 +688,41 @@ int _show_progress (CURLPROGRESS *prog, double dltotal, double dlnow, double ult
   return 0;
 }
 
+#define SET_SOCKERRNO(x)  (errno = (x))
+
+int _set_socket_option(void *clientp, curl_socket_t curlfd, curlsocktype purpose) {
+  int onoff = 1;
+#if defined(TCP_KEEPIDLE) || defined(TCP_KEEPINTVL)
+  int keepidle = (int)clientp;
+#endif
+
+  switch (purpose) {
+  case CURLSOCKTYPE_IPCXN:
+    if (setsockopt(curlfd, SOL_SOCKET, SO_KEEPALIVE, (void *)&onoff, sizeof(onoff)) < 0) {
+      SET_SOCKERRNO(0);
+      return 0; 
+    } else {
+      if (clientp) {
+#ifdef TCP_KEEPIDLE
+        if (setsockopt(curlfd, IPPROTO_TCP, TCP_KEEPIDLE, (void *)&keepidle, sizeof(keepidle)) < 0) {
+          SET_SOCKERRNO(0);
+          return 0;
+        }
+#endif
+#ifdef TCP_KEEPINTVL
+        if (setsockopt(curlfd, IPPROTO_TCP, TCP_KEEPINTVL, (void *)&keepidle, sizeof(keepidle)) < 0) {
+          SET_SOCKERRNO(0);
+          return 0;
+        }
+#endif
+      }
+    }
+    break;
+  default:
+    break;
+  }
+  return 0;
+}
 
 /*
  * Module initialization function.

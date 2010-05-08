@@ -1,7 +1,7 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;; curllib.stub
 ;;; 
-;;; Last Updated: "2010/05/06 23:55.59"
+;;; Last Updated: "2010/05/08 22:26.40"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -348,6 +348,12 @@
 	"CURLPROGRESS *prog_p;"
 	"prog_p = SCMCURL_PROGRESS_UNBOX(&prog);"
 	"SCM_RESULT = SCM_LIST2(Scm_MakeFlonum(prog_p->total), Scm_MakeFlonum(prog_p->total));"))
+
+(define-cproc curl-set-socket-options (hnd::<curl-base> keepalive_seconds::<int>)
+  (body <int>
+	"curl_easy_setopt(hnd, CURLOPT_SOCKOPTFUNCTION, _set_socket_option);"
+	"curl_easy_setopt(hnd, CURLOPT_SOCKOPTDATA, keepalive_seconds);"
+	"SCM_RESULT = 0;"))
 
 ;; global flags
 (define-enum CURL_GLOBAL_ALL)
@@ -1005,6 +1011,10 @@
 (define-enum CURL_TIMECOND_IFUNMODSINCE)
 (define-enum CURL_TIMECOND_LASTMOD)
 
+;; curlsocktype
+; (>= 7.15.6)
+(if "LIBCURL_VERSION_NUM >= 0x070f06"
+    (define-enum CURLSOCKTYPE_IPCXN))
 
 ;;  CURLOPT_SSH_KEYFUNCTION return code
 ; (>= 7.17.6)
