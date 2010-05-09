@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl version 7.20.1: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/05/08 22:44.38"
+;;; Last Updated: "2010/05/09 14:23.09"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -30,6 +30,8 @@
   (use rfc.uri)
   (use srfi-1)
   (use util.list)
+  (use util.match)
+  (extend rfc.http)
   (export 
    <curl>
    <curl-multi>
@@ -130,7 +132,6 @@
    http-post
    http-put
    http-delete
-   http-user-agent
 
    ;; curl response code
    CURLE_OK
@@ -813,6 +814,7 @@
 	 (keepalive "keepalive" #f)
 	 (keepalive-time "keepalive-time=i" #f)
 	 ;; not implemented yet
+	 (form "F|form=s" #f)
 	 (form-string "form-string=s" #f)
 	 (globoff "g|globoff" #f)
 	 (remote-name-all "remote-name-all" #f))
@@ -1480,39 +1482,54 @@
   (let-keywords opts ((no-redirect :no-redirect #f)
 		      (sink :sink #f)
 		      (flusher :flusher #f)
-		      #;(request-encoding :request-encoding #f)
+		      (request-encoding :request-encoding (gauche-character-encoding))
 		      (proxy :proxy #f)
 		      (ssl :ssl #f)
 		      (verbose :verbose #f)
 		      . opt)
-		(let* ((curl (make <curl> :url (string-append (if ssl "https://" "http://") hostname path)))
+		(let* ((curl (make <curl> :url (string-append (if ssl "https://" "http://") hostname 
+							      (ensure-request-uri path request-encoding))))
 		       (output (if (not sink) (curl-open-output-port curl)
 				   (curl-open-output-port curl sink)))
-		       (header (curl-open-header-port curl)))
+		       (header-output (curl-open-header-port curl))
+		       (headers opt))
 		  (when verbose (curl-setopt! curl CURLOPT_VERBOSE 1))
 		  (if (equal? method 'HEAD) (curl-setopt! curl CURLOPT_NOBODY 1)
 		      (curl-setopt! curl CURLOPT_CUSTOMREQUEST (symbol->string method)))
 		  (curl-setopt! curl CURLOPT_USERAGENT (http-user-agent))
 		  (curl-setopt! curl CURLOPT_HTTP_VERSION CURL_HTTP_VERSION_NONE)
-		  (when body (curl-setopt! curl CURLOPT_POSTFIELDS body))
+		  (when body 
+		    (cond ((string? body) (curl-setopt! curl CURLOPT_POSTFIELDS body))
+			  ((list? body)
+			   (receive (body boundary) (http-compose-form-data body #f request-encoding) ; rfc.http of Gauche 0.9
+			     (curl-setopt! curl CURLOPT_POSTFIELDS body)
+			     (set! headers `(:mime-version "1.0"
+					     :content-type ,#`"multipart/form-data; boundary=,boundary"
+					     ,@(delete-keyword! :content-type headers)))))
+			  (else (error "Invalid request-body format:" body))))
 		  (if no-redirect (curl-setopt! curl CURLOPT_FOLLOWLOCATION 0)
 		      (curl-setopt! curl CURLOPT_FOLLOWLOCATION 1))
 		  (when proxy (begin 
 				(curl-setopt! curl CURLOPT_PROXYTYPE CURLPROXY_HTTP)
 				(curl-setopt! curl CURLOPT_PROXY proxy)))
-		  (unless (null? opt)
+		  (unless (null? headers)
 		    (curl-setopt! curl CURLOPT_HTTPHEADER
-				  (map (lambda (h) (string-append (keyword->string (car h)) ": " (cadr h))) (slices opt 2))))
+				  (map (lambda (h) (string-append (keyword->string (car h)) ": " (cadr h))) (slices headers 2))))
 		  (if (curl)
-		      (if flusher (flusher output header)
+		      (if flusher (flusher output header-output)
 			  (values
 			   (number->string (cdr (assq 'RESPONSE_CODE (curl-getinfo curl))))
-			   (curl-headers->alist (get-output-string header) -1)
+			   (curl-headers->alist (get-output-string header-output) -1)
 			   (get-output-string output)))
 		      #f))))
 
-(define http-user-agent 
-  (make-parameter (string-append "gauche.http/" (gauche-version) " (" (curl-version) ")")))
+(define (ensure-request-uri request-uri enc) ; copy from rfc.http of Gauche 0.9
+  (match request-uri
+    [(? string?) request-uri]
+    [(path n&v ...) (http-compose-query path n&v enc)]
+    [_ (error "Invalid request-uri form for http request API:" request-uri)]))
+
+(http-user-agent (string-append "gauche.http/" (gauche-version) " (" (curl-version) ")"))
 
 ; GET
 (define (http-get hostname path . opt)

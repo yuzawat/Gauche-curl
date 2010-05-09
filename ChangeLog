@@ -1,3 +1,10 @@
+2010-05-09  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.2.2
+	* curl.scm
+	curl is extended rfc.http now.
+	fix compatibility of http-common to rfc.http
+
 2010-05-08  yuzawat  <suzdalenator@gmail.com>
 
 	* release 0.2.1

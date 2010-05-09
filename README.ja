@@ -6,7 +6,7 @@ Abstract:
  
 Author: yuzawat <suzdalenator ＠ gmail.coml>
 
-Version: 0.2.1 2010/05/08
+Version: 0.2.2 2010/05/09
 ======================================================================
 
 Module: curl
@@ -438,6 +438,7 @@ Function: curl-slist->list curl_slist
    buffer
  N|no-buffer
 
+ F|form
    form-string
  g|globoff
    remote-name-all
