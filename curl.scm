@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl version 7.20.1: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/05/13 21:48.08"
+;;; Last Updated: "2010/05/16 12:08.34"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -30,7 +30,6 @@
   (use srfi-1)
   (use util.list)
   (use util.match)
-  (extend rfc.http)
   (export 
    <curl>
    <curl-multi>
@@ -116,6 +115,9 @@
    curl-open-header-port
    curl-headers->alist
 
+   curl-parse-form-opt-string
+   curl-set-http-form!
+
    curl-set-progress!
    curl-get-progress
 
@@ -131,6 +133,10 @@
    http-post
    http-put
    http-delete
+
+   http-compose-query
+   http-compose-form-data
+   http-user-agent
 
    ;; curl response code
    CURLE_OK
@@ -555,6 +561,11 @@
 
 (select-module curl)
 
+(autoload rfc.http 
+	  http-compose-query
+	  http-compose-form-data
+	  http-user-agent)
+
 ;; Loads extension
 (dynamic-load "curl")
 
@@ -707,13 +718,42 @@
 		    '("png" . "image/png")
 		    '("gif" . "image/gif")))))
 
-(define content-types (mime-type-db))
-
 (define (get-content-type fn . default)
-  (let1 default-type (if (not (null? default))
-			 (car default) #f)
+  (let ((content-types (mime-type-db))
+	(default-type (if (not (null? default))
+			 (car default) #f)))
     (let1 suffix (path-extension fn)
       (if suffix (hash-table-get content-types suffix default-type) default-type))))
+
+;; This function passes a form option string to http-compose-form-data. 
+;; But, it don't work completely as same as curl(1).
+(define (parse-form-opt-string str . nofile)
+  (define (opt-parse ls)
+    (append-map (lambda (optn) 
+		  (let1 v (string-split optn #\=)
+		    (cond ((equal? (car v) "type") `(:content-type ,(cadr v)))
+			  ((equal? (car v) "filename") `(:name ,(cadr v)))
+			  ((equal? (car v) "headers") `(:name ,(cadr v)))
+			  (else (error <curl-error> :message "form option argument is invalid.")))))
+		ls))
+  (let*((pstr ((string->regexp "^(.+?)=(.+)$") str))
+	(name (pstr 1))
+	(fvalue ((string->regexp "^([@<])(.+)$") (pstr 2))))
+    (map (lambda (vn) (let* ((fnparts (string-split vn #\;))
+			     (vname (if (and fvalue (null? nofile)) 
+					((#/^[@<]?(.+)$/ (car fnparts)) 1) (car fnparts))))
+			(append (if (and fvalue (null? nofile))
+				    (cond ((equal? (fvalue 1) "@") 
+					   (append `(,name :file: ,vname) 
+						   (if (not (find (lambda (o) (if (#/^type=/ o) #t #f)) (cdr fnparts)))
+						       `(:content-type ,(get-content-type vname "application/octet-stream"))
+						       '())))
+					  ((equal? (fvalue 1) "<") 
+					   `(,name :value ,(call-with-input-file vname (cut port->string <>)))))
+				    `(,name :value ,vname))
+				(if (null? (cdr fnparts)) '()
+				    (opt-parse (cdr fnparts))))))
+	 (string-split (pstr 2) #\,))))
 
 ; parse options
 (define-method %easy-options ((curl <curl>) args)
@@ -770,9 +810,9 @@
 	 (ftp-ssl-reqd "ftp-ssl-reqd" #f)
 	 (ftp-ssl-ccc "ftp-ssl-ccc" #f)
 	 (ftp-ssl-ccc-mode "ftp-ssl-ccc-mode=s" #f)
-	 (form "F|form=s" #f) ; not implemented yet
-	 (form-string "form-string=s" #f) ; not implemented yet
-	 (globoff "g|globoff" #f) ; not implemented yet
+	 (form "F|form=s" #f)
+	 (form-string "form-string=s" #f)
+	 ;; -g/globoff (not implemented)
 	 (get "G|get" #f)
 	 ;; --help (not implemented)
 	 (header "H|header=s" #f)
@@ -811,7 +851,7 @@
 	 (ntlm "ntlm" #f)
 	 (output "o|output=s" #f)
 	 (remote-name "O|remote-name" #f)
-	 (remote-name-all "remote-name-all" #f) ; not implemented yet
+	 ;; --remote-name-all (not implemented)
 	 (pass "pass=s" #f)
 	 (post301 "post301" #f)
 	 (post302 "post302" #f)
@@ -913,7 +953,7 @@
       ;; debug
       (if verbose (_ c CURLOPT_VERBOSE 1) (_ c CURLOPT_VERBOSE 0))
       (when stderr (curl-open-file hnd CURLOPT_STDERR stderr))
-      ;; http 
+      ;; HTTP
       (if user-agent (_ c CURLOPT_USERAGENT user-agent) 
 	  (_ c CURLOPT_USERAGENT (string-append "Gauche/" (gauche-version) " " (curl-version))))
       (if location (_ c CURLOPT_FOLLOWLOCATION 1) (_ c CURLOPT_FOLLOWLOCATION 0)) 
@@ -956,6 +996,20 @@
 			      (_ c CURLOPT_TIMECONDITION CURL_TIMECOND_NONE))
 			  ;; FIXME: CURLOPT_TIMEVALUE is not reflected.
 			  (_ c CURLOPT_TIMEVALUE (curl-getdate timeval))))))))
+      ;; HTTP Form
+      (when (or form form-string)
+	(begin
+	  (_ c CURLOPT_POST 1)
+	  (receive (poststr boundary)
+	      (apply http-compose-form-data `(,(if form (curl-parse-form-opt-string form) 
+						   (curl-parse-form-opt-string form-string #t)) #f))
+	    (_ c CURLOPT_POSTFIELDS poststr)
+	    (slot-set! c 'http-headers (append (http-headers-of c)
+					       `("Mime-Version: 1.0"
+						 ,#`"Content-Type: multipart/form-data; boundary=,|boundary|"))))
+	  (if (fc "Largefile")
+	      (_ c CURLOPT_POSTFIELDSIZE_LARGE -1)
+	      (_ c CURLOPT_POSTFIELDSIZE -1))))
       ;; output
       (if output (curl-open-output-file c output) (curl-open-port hnd CURLOPT_WRITEDATA (current-output-port)))
       (when remote-name (curl-open-output-file curl
@@ -1054,13 +1108,13 @@
       (when data-urlencode
 	  (begin
 	    (_ c CURLOPT_POST 1)
-	    (cond ((#/^(.+)@(.+)$/ data-urlencode) 
+	    (cond ((#/^(.+?)@(.+)$/ data-urlencode) 
 		   => (lambda (m) 
 			(_ c CURLOPT_POSTFIELDS
 			   (string-append 
 			    (m 1) "=" 
-			    (uri-encode-string (port->string (open-input-file (m 2))))))))
-		  ((#/^(.+)=(.+)$/ data-urlencode) 
+			    (uri-encode-string (call-with-input-file (m 2) (cut port->string <>)))))))
+		  ((#/^(.+?)=(.+)$/ data-urlencode) 
 		   => (lambda (m) 
 			(_ c CURLOPT_POSTFIELDS
 			   (string-append 
@@ -1069,7 +1123,7 @@
 		  ((#/^@(.+)$/ data-urlencode) 
 		   => (lambda (m) 
 			(_ c CURLOPT_POSTFIELDS
-			   (uri-encode-string (port->string (open-input-file (m 1)))))))
+			   (uri-encode-string (call-with-input-file (m 1) (cut port->string <>))))))
 		  ((#/^=(.+)$/ data-urlencode) 
 		   => (lambda (m) 
 			(_ c CURLOPT_POSTFIELDS
@@ -1163,7 +1217,7 @@
 		      ((vc "7.16.5") (_ c CURLOPT_KEYPASSWD pass))
 		      ((vc "7.9.3") (_ c CURLOPT_SSLKEYPASSWD pass))
 		      (else (_ c CURLOPT_CERTKEYPASSWD pass))))
-	  (when (vc "7.19.6")
+_	  (when (vc "7.19.6")
 	      (when (home-directory)
 		(_ c CURLOPT_SSH_KNOWNHOSTS (string-append (home-directory) "/.ssh/known_hosts"))))))
       ;; FTP
@@ -1523,6 +1577,26 @@
 	  (if (>= n 0) (list-ref ls n)
 	      (list-ref ls (- (length ls) 1)))))))
 
+(define (curl-parse-form-opt-string form . nofile)
+  (cond ((string? form)
+	 (apply parse-form-opt-string form nofile))
+	((list? form)
+	 (append-map (lambda (f) (apply curl-parse-form-opt-string f nofile)) form))
+	(else (error <curl-error> :message "a form option string of curl(1) or string's list required."))))
+
+(define-method curl-set-http-form! ((curl <curl>) form . nofile)
+  (curl-setopt! curl CURLOPT_POST 1)
+  (receive (poststr boundary)
+      (apply http-compose-form-data `(,(if (null? nofile) (curl-parse-form-opt-string form) 
+					   (curl-parse-form-opt-string form #t)) #f))
+    (curl-setopt! curl CURLOPT_POSTFIELDS poststr)
+    (slot-set! curl 'http-headers (append (http-headers-of curl)
+					  `("Mime-Version: 1.0"
+					    ,#`"Content-Type: multipart/form-data; boundary=,|boundary|"))))
+  (if (fc "Largefile")
+      (curl-setopt! curl CURLOPT_POSTFIELDSIZE_LARGE -1)
+      (curl-setopt! curl CURLOPT_POSTFIELDSIZE -1)))
+
 ; progress functions
 (define-method curl-set-progress! ((curl <curl>) . show-bar)
   (if (not (slot-ref curl 'progress))
@@ -1547,6 +1621,7 @@
 		      (proxy :proxy #f)
 		      (ssl :ssl #f)
 		      (verbose :verbose #f)
+		      (options :options #f)
 		      . opt)
 		(let* ((curl (make <curl> :url (string-append (if ssl "https://" "http://") hostname 
 							      (ensure-request-uri path request-encoding))))
@@ -1576,6 +1651,7 @@
 		  (unless (null? headers)
 		    (curl-setopt! curl CURLOPT_HTTPHEADER
 				  (map (lambda (h) (string-append (keyword->string (car h)) ": " (cadr h))) (slices headers 2))))
+		  (when options (%easy-options curl options))
 		  (if (curl)
 		      (if flusher (flusher output header-output)
 			  (values

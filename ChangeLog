@@ -1,3 +1,13 @@
+2010-05-15  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.2.4
+	* curl.scm
+	'autoload rfc.http instead of using 'extend rfc.http
+	add those to %easy-options.
+	 "--form"
+	 "--form-string"
+	add curl-set-http-form!, curl-parse-form-opt-string.
+
 2010-05-13  yuzawat  <suzdalenator@gmail.com>
 
 	* release 0.2.3
