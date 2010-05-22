@@ -33,6 +33,7 @@ if [ "$tgz" = "yes" ]; then
   echo DIST_EXCLUDE_X >> DIST_EXCLUDE_X
   echo .hg\* >> DIST_EXCLUDE_X
   echo .svn >> DIST_EXCLUDE_X
+  echo .DS_Store >> DIST_EXCLUDE_X
   if [ -f DIST_EXCLUDE ]; then cat DIST_EXCLUDE >> DIST_EXCLUDE_X; fi
   find . -name CVS -print -prune >> DIST_EXCLUDE_X
 

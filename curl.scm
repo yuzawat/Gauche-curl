@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl version 7.20.1: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/05/16 12:08.34"
+;;; Last Updated: "2010/05/22 17:22.36"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -1285,8 +1285,8 @@ _	  (when (vc "7.19.6")
 	(when mail-rcpt	(_ c CURLOPT_MAIL_RCPT (string-split mail-rcpt #\,)))
 	(when mail-from (_ c CURLOPT_MAIL_FROM mail-from))))))
 
-; procedure
-; easy interface
+;; procedure
+;; easy interface
 (define-method curl-setopt! ((curl <curl>) opt val)
   (let1 hnd (handler-of curl)
     (if hnd 
@@ -1403,7 +1403,7 @@ _	  (when (vc "7.19.6")
 	(if (= rc 0) #t #f))
       (error <curl-error> "This method is unsupported in this version of libcurl.")))
 
-; multi interface
+;; multi interface
 (define-method curl-setopt! ((curlm <curl-multi>) opt val)
   (if (vc "7.15.4")
       (let1 hnd (handler-of curlm)
@@ -1482,7 +1482,7 @@ _	  (when (vc "7.19.6")
       ((= (remains-of curlm) 0) (handlers-of curlm))
     (apply sys-select (append (curl-fdset curlm) '(50000)))))
 
-; share interface
+;; share interface
 (define-method curl-setopt! ((share <curl-share>) opt val)
   (let1 hnd (handler-of curlm)
     (if hnd 
@@ -1506,7 +1506,7 @@ _	  (when (vc "7.19.6")
 	  #f)
       (error <curl-error> "This method is unsupported in this version of libcurl.")))
 
-; I/O
+;; I/O
 (define-method curl-open-output-file ((curl <curl>) filename)
   (let1 hnd (handler-of curl)
     (if hnd
@@ -1568,7 +1568,7 @@ _	  (when (vc "7.19.6")
 				(error <curl-error> :message "Set output port."))))
 	(error <curl-error> :message "curl handler is invalid."))))
 
-; utils
+;; utils
 (define (curl-headers->alist headers-str . num)
   (let1 ls (remove null? (map (lambda  (h) (rfc822-read-headers (open-input-string h)))
 			      (string-split headers-str "\r\n\r\n")))
@@ -1597,7 +1597,7 @@ _	  (when (vc "7.19.6")
       (curl-setopt! curl CURLOPT_POSTFIELDSIZE_LARGE -1)
       (curl-setopt! curl CURLOPT_POSTFIELDSIZE -1)))
 
-; progress functions
+;; progress functions
 (define-method curl-set-progress! ((curl <curl>) . show-bar)
   (if (not (slot-ref curl 'progress))
       (if (null? show-bar)
@@ -1612,18 +1612,23 @@ _	  (when (vc "7.19.6")
 
 
 ;; wrapper procedure
-; Common
+;; Common
 (define (http-common method hostname path body . opts)
-  (let-keywords opts ((no-redirect :no-redirect #f)
-		      (sink :sink #f)
+  (let-keywords opts ((sink :sink #f)
 		      (flusher :flusher #f)
+		      (host :host #f)
+		      (secure :secure #f)
+		      (no-redirect :no-redirect #f)
+		      (auth-handler :auth-handler #f)
+		      (auth-user :auth-user #f)
+		      (auth-password :auth-password #f)
 		      (request-encoding :request-encoding (gauche-character-encoding))
 		      (proxy :proxy #f)
 		      (ssl :ssl #f)
 		      (verbose :verbose #f)
 		      (options :options #f)
 		      . opt)
-		(let* ((curl (make <curl> :url (string-append (if ssl "https://" "http://") hostname 
+		(let* ((curl (make <curl> :url (string-append (if (or secure ssl) "https://" "http://") hostname 
 							      (ensure-request-uri path request-encoding))))
 		       (output (if (not sink) (curl-open-output-port curl)
 				   (curl-open-output-port curl sink)))
@@ -1634,17 +1639,22 @@ _	  (when (vc "7.19.6")
 		      (curl-setopt! curl CURLOPT_CUSTOMREQUEST (symbol->string method)))
 		  (curl-setopt! curl CURLOPT_USERAGENT (http-user-agent))
 		  (curl-setopt! curl CURLOPT_HTTP_VERSION CURL_HTTP_VERSION_NONE)
+		  (curl-setopt! curl CURLOPT_ENCODING "") ; "Content-Encoding: deflate, gzip", not compatible with rfc.http?
+		  (when host (set! headers (append `(:Host ,host) headers)))
 		  (when body 
 		    (cond ((string? body) (curl-setopt! curl CURLOPT_POSTFIELDS body))
 			  ((list? body)
 			   (receive (body boundary) (http-compose-form-data body #f request-encoding) ; rfc.http of Gauche 0.9
 			     (curl-setopt! curl CURLOPT_POSTFIELDS body)
-			     (set! headers `(:mime-version "1.0"
-					     :content-type ,#`"multipart/form-data; boundary=,boundary"
-					     ,@(delete-keyword! :content-type headers)))))
+			     (set! headers `(:Mime-Version "1.0"
+					     :Content-Type ,#`"multipart/form-data; boundary=,boundary"
+					     ,@(delete-keyword! :Content-Type headers)))))
 			  (else (error "Invalid request-body format:" body))))
 		  (if no-redirect (curl-setopt! curl CURLOPT_FOLLOWLOCATION 0)
 		      (curl-setopt! curl CURLOPT_FOLLOWLOCATION 1))
+		  (when (and auth-user auth-password) 
+		      (curl-setopt! curl CURLOPT_USERPWD (string-append auth-user ":" auth-password)))
+		  (when auth-handler (curl-setopt! curl CURLOPT_HTTPAUTH CURLAUTH_ANY))
 		  (when proxy (begin 
 				(curl-setopt! curl CURLOPT_PROXYTYPE CURLPROXY_HTTP)
 				(curl-setopt! curl CURLOPT_PROXY proxy)))
@@ -1668,23 +1678,23 @@ _	  (when (vc "7.19.6")
 
 (http-user-agent (string-append "gauche.http/" (gauche-version) " (" (curl-version) ")"))
 
-; GET
+;; GET
 (define (http-get hostname path . opt)
   (apply http-common 'GET hostname path #f opt))
 
-; HEAD
+;; HEAD
 (define (http-head hostname path . opt)
   (apply http-common 'HEAD hostname path #f opt))
 
-; POST
+;; POST
 (define (http-post hostname path body . opt)
   (apply http-common 'POST hostname path body opt))
 
-; PUT
+;; PUT
 (define (http-put hostname path body . opt)
   (apply http-common 'PUT hostname path body opt))
 
-; DELETE
+;; DELETE
 (define (http-delete hostname path . opt)
   (apply http-common 'DELETE hostname path #f opt))
 

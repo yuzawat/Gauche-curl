@@ -1,3 +1,11 @@
+2010-05-22  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.2.5
+	* curl.scm
+	http-* wrappers have compatibility with Gauche 0.9.1 (Trunk), maybe.
+	* README
+	simple document in English.
+
 2010-05-15  yuzawat  <suzdalenator@gmail.com>
 
 	* release 0.2.4

@@ -1,0 +1,590 @@
+Abstract:
+ This is a Gauche binding to libcurl <http://curl.haxx.se/libcurl/>.
+ This provides a way to access for various URL from client side.
+ It supports http, https, ftp and other protocol scheme. (Supported protocols depend on libcurl that linked.)
+
+ libcurl is authored by Mr. Daniel Stenberg. <http://curl.haxx.se/docs/copyright.html>
+ 
+Author: yuzawat <suzdalenator at gmail.com>
+
+Version: 0.2.5 2010/05/22
+======================================================================
+
+Module: curl
+ This module provides a interface to libcurl -- the multiprotocol file transfer library.
+ It's able to do download or upload to various network resources that expressed by URL with libcurl.
+ And has a feature that it maps with data input/output to PORT.
+ To pass the setting parameters to libcurl, it provides an easy interface like command line options of curl(1).
+ 
+Example 1:
+(let* ((c (make <curl> :url "http://www.example.tld/"))
+       (op (curl-open-output-port c))
+       (hp (curl-open-header-port c)))
+    (curl-setopt! c CURLOPT_VERBOSE 1)
+    (curl-setopt! c CURLOPT_FOLLOWLOCATION 1)
+    (c)
+    (display (get-output-string op)))
+
+Example 2:
+((make <curl> :url "http://www.example.tld/" :options "-v -L"))
+
+
+----
+Higher level interfaces
+
+Class: <curl>
+
+ A handler of libcurl. With this instance, setting URL and other options and receiving a result.
+ It writes a results to standard output by default.
+ To choose an arbitrary file or PORT for input/output, use curl-open-... methods.
+
+
+Instance Variable of <curl>: url
+
+ URL to connect.
+ Not support to wildcard URL of curl(1).
+
+
+Instance Variable of <curl>: options
+
+ An easy interface to set options for handler. It's able to specify options of curl(1).
+ Settng curl's option strings as string list, parameters is reflected to a handler. It also can receive a string separated by space. But complex specification may fail to parse, so you should use string list.
+ Formats and meaning of options basically conforms with curl(1) version 7.20.1.
+ But not same as curl(1) completely by a limitation of command line parser. For example, curl(1) can accept multiple same options, but this function cannot do it.
+(Setting multiple "-H,--header" are enable to add multiple http headers.
+A multiple setting of "-H,--header" are enable to add multiple http headers, but cannot be the same behavior. About "-H,--header", setting a argument that a string combined by comma, so that enable to set multiple headers. Also "-F,--form" and "--form-string", it can use multiple form by using multiple options in curl(1), but not possible to do it by 'options'. Use 'curl-set-http-form' for sake of using multiple form setting.)
+ Under this limitation, for a difficult setting in this function, You should use "curl-setopt!" directly.
+
+
+Instance Variable of <curl>: no-option
+
+ This invalidates to set options to a handler in ordinary. By default, "options" function specifies some parameters according as behavior of curl(1). If "no-options was #t, it skips all function of "options". default: #f.
+
+
+Instance Variable of <curl>: http-headers
+ It stores HTTP headers as string list. By setting via options ("--header=hoge:hoge"), or by using "curl-setopt!" directory (curl-setopt! curl CURLOPT_HTTPHEADER '("hoge:hoge")), they are reflected in this.
+
+
+Instance Variable of <curl>: rc
+ It stores a return code that executed just before to the handler.
+
+
+Instance Variable of <curl>: progress
+ It stores a progress counter of download/upload.
+
+
+Class: <curl-multi>
+ A handler of curl multi interface. It is able to perform multiple curl handlers asynchronously.
+
+ 
+Instance Variable of <curl-multi>: rc
+ It stores a return code that executed just before to the handler.
+
+
+Instance Variable of <curl-multi>: remains
+ It stores  number of handlers that have not finish completely now.
+
+
+Instance Variable of <curl-multi>: handlers
+ It stores list of curl handlers in this multi handler.
+ By executing "curl-perform", it will be updated "rc" slot of a instance in these handlers.
+
+
+Instance Variable of <curl-multi>: maxconnect
+ It stores number of max connections of a multi handler. default: 10. When you make instance, this number can specify by keyword operand.
+
+
+Condition: <curl-error>
+ Condition of this module. Inherits <error>.
+
+
+Method: curl-setopt! (c <curl>) CURLOPT_... val
+ Setting a parameter to a handler.
+ 'CURLOPT_...' is constant defined by libcurl. For example, specify URL by CURLOPT_URL, specify timeout seconds by CURLOPT_TIMEOUT. Please refer to the document of libcurl function 'curl_easy_setopt' for details. <http://curl.haxx.se/libcurl/c/curl_easy_setopt.html>
+ 'val' is a value which 'CURLOPT_....' requires. It may be a string, a string list, number or #f.
+ Caution: This module does not provide interfaces for function pointers. For option which accepts a value as 'struct curl_slist'(like CURLOPT_HTTPHEADER), set a string list.
+ Returns #t if success.
+
+
+Method: curl-setopt! (cm <curl-multi>) CURLMOPT_... val
+ Setting a parameter to a multi interface handler.
+ 'CURLMOPT_...' is constant defined by libcurl. Please refer to the document of libcurl function 'curl_multi_setopt' for details. <http://curl.haxx.se/libcurl/c/curl_multi_setopt.html>
+ Caution: This module does not provide interfaces for function pointers. 
+ Returns #t if success.
+
+
+Method: curl-perform (c <curl>)
+ Performs a handler. (connects to URL)
+ Returns #t if success.
+
+
+Method: curl-perform (cm <curl-multi>)
+ Performs a multi interface handler.
+ Returns #t if success.
+
+
+Method: curl-getinfo (c <curl>)
+ Gets informations of a performed handler. 
+ Returns list of pairs.
+ refer to the document of libcurl function 'curl_easy_getinfo' for details. <http://curl.haxx.se/libcurl/c/curl_easy_getinfo.html>
+
+
+Method: curl-cleanup! (c <curl>)
+ Does clean up a handler. Once a handler did clean-up, cannot use again. 
+ Returns #t if success.
+
+
+Method: curl-cleanup! (cm <curl-multi>)
+ Does clean up a multi interface handler. Once a handler did clean-up, cannot use again. 
+ Returns #t if success.
+
+
+Method: curl-reset! (c <curl>)
+ Resets a handler.
+ Returns #t if success.
+
+
+Method: curl-strerror (c <curl>)
+ Returns string which describes last status of a handler. 
+
+
+Method: curl-strerror (cm <curl-multi>)
+ Returns string which describes last status of a multi interface handler. 
+
+
+Method: curl-handler-add! (cm <curl-multi>) (c <curl>)
+ Adds a handler to a multi interface handler.
+
+   
+Method: curl-handler-remove! (cm <curl-multi>) (c <curl>)
+ Removes a handler from a multi interface handler.
+
+
+Method: curl-fdset (cm <curl-multi>)
+ Gets fdsets of a multi interface handler wthich is performing now.
+ Returns three element list of <sys-fdset> ('(readfds writefds exceptfds))
+
+
+Method: curl-multi-info->list (cm <curl-multi>)
+ Reports handler(s) that finished performing. It never returns the handler that had once reported.
+ Returns a list of a pair as a return code and <curl-base> ('((rc . <curl-base>)...)).
+
+
+Method: curl-open-output-file (c <curl>) filename
+Method: curl-open-input-file (c <curl>) filename
+Method: curl-open-header-file (c <curl>) filename
+Method: curl-open-error-file (c <curl>) filename
+ Binds downloaded data, upload data, header information and debug information to a file in a filename string.
+ Returns <curl-file>. <curl-file> is a file pointer. A file pointer must close clealy to flush a buffer. Use curl-close-file to close it. 
+ These methods have counterpart to curl-open-*-port, except for curl-open-error-file.
+
+
+Method: curl-open-output-port (c <curl>) &optional outport
+Method: curl-open-input-port (c <curl>) inport
+Method: curl-open-header-port (c <curl>) &optional outport
+ Binds downloaded data, upload data and header information to PORT.
+ Returns PORT. curl-open-output-port and curl-open-header-port return a string port if omit an optional output port.
+
+
+Function: curl-headers->alist string &optional num
+ Turns strings of header information into a list. In libcurl, when HTTP redirects occur, it puts header information each redirected connections. So it makes a list of lists of pairs as the result. Setting optional number, returns a list of pairs of the order number. If setting -1, returns the last.
+
+
+Function: curl-parse-form-opt-string form &optional nofile
+Turns a string that argument of "--form" or "--form-string" in curl(1) into a list. A list is intended to use as a argument of 'http-compose-form-data' in 'rfc.http'. form is a string, or strings list. If existing an optional 'nofile', it does not parse meta charactors like "@" and "<",  as a same behavior as "--form-stirng".
+
+
+Method: curl-set-http-form! (c <curl>) form &optional nofile
+ Sets a upload by HTTP form to a handler. form is a string, or strings list. If existing an optional 'nofile', it does not parse meta charactors like "@" and "<",  as a same behavior as "--form-stirng". With 'options', simple setting interface of handler, it cannot specify multiple forms, so that it must use this for multiple forms.
+
+
+Generic application: c
+ Same as (curl-perform (c <curl>))
+
+
+Generic application: cm
+ Same as (curl-perform (cm <curl-multi>))
+
+
+Function: curl-version
+ Returns a string of libcurl version linked.
+
+
+Function: curl-version-info
+ Returns a list of pairs, as information about linked libcurl version, supported function and protocols 
+
+
+Method: curl-set-progress! (c <curl>) &optional show-bar
+ enables to report the progress situation of download/upload. If optional 'show-bar' is #t, it writes a simple progress bar to STDERR. 
+
+
+Method: curl-get-progress (c <curl>)
+ Reports the progress situation of download/upload. 
+ Returns a list of two numbers. That means...
+  '("total byte" "up/downloaded byte")
+
+
+Function: http-get server request-uri &keyword sink flusher no-redirect secure ...
+Function: http-head server request-uri &keyword no-redirect secure ...
+Function: http-post server request-uri body &keyword sink flusher no-redirect secure ...
+Function: http-put server request-uri body &keyword sink flusher no-redirect secure ...
+Function: http-delete server request-uri &keyword sink flusher no-redirect secure ...
+ Wrappers of same name functions which are defined in rfc.http. Maybe it works same.
+ Setting a keyword :secure #t, it uses a SSL connection (compatible to 0.9.1?)
+
+
+----
+Lower level interfaces
+
+Builtin Class: <curl-base>
+ Handler of libcurl easy interface <http://curl.haxx.se/libcurl/c/libcurl-easy.html>
+
+
+Builtin Class: <curl-multi-base>
+ Handler of libcurl multi interface <http://curl.haxx.se/libcurl/c/libcurl-multi.html>
+
+
+Builtin Class: <curl-share-base>
+ Handler of libcurl share interface <http://curl.haxx.se/libcurl/c/libcurl-share.html>
+
+
+Builtin Class: <curl-slist>
+ Data structure in libcurl, struct curl_slist. That is one-way linked list.
+
+
+Constant: CURLE_...
+ Error code of libcurl
+
+
+Constant: CURLOPT_...
+ Option code of libcurl
+
+
+Constant: CURLINFO_...
+ Information code of libcurl
+
+
+Function: curl-global-init flag
+ Initializes libcurl globally.
+ Returns 0 if success.
+
+
+Function: curl-global-cleanup
+ Does clean-up of libcurl globally.
+ Returns #t if success.
+
+
+Function: curl-easy-init
+ Creates a handler of easy interface.
+ Returns <curl-base>.
+
+
+Function: curl-easy-cleanup hnd
+ Does clean-up a handler of easy interface.
+ Returns 0 if success.
+
+
+Function: curl-easy-setopt hnd CURLOPT_... val
+ Sets a parameter to a handler of easy interface.
+ Returns 0 if success.
+
+
+Function: curl-easy-perform hnd
+ Performs a handler of easy interface (connects URL).
+ Returns 0 if success.
+
+
+Function: curl-easy-reset hnd
+ Reset a handler of easy interface.
+ Returns #undef if success.
+
+
+Function: curl-easy-duphandle hnd
+ Duplicates a handler of easy interface.
+ Returns a new handler (<curl-base>).
+
+
+Function: curl-easy-getinfo hnd CURLINFO_...
+ Gets informaion of the performed handler of easy interface.
+ Specifying an information type of CURLINFO_..., it returns a string, number, string list or #f according to an information type.
+
+
+Function: curl-easy-strerror errono
+ Turns a return code of libcurl into a message string.
+
+
+Function: curl-easy-escape hnd string length
+ Returns a URL-encoded string from a specified length string.
+
+ 
+Function: curl-easy-unescape hnd string length outlength
+ Returns a decoded string from a specified length string URL-encodeed.
+
+
+Function: curl-getenv string
+ Gets an environment variable about a string.
+
+
+Function: curl-getdate string
+ Returns POSIX time from a specified string.
+
+
+Function: curl-multi-init
+ Creates a handler of multi interface.
+ Returns <curl-multi-base>.
+
+
+Function: curl-multi-cleanup mhnd
+ Does clean-up a handler of multi interface.
+ Returns 0 if success.
+
+
+Function: curl-multi-setopt hnd CURLOPTM_... val
+ Sets a parameter to a handler of multi interface.
+ Returns 0 if success.
+
+
+Function: curl-multi-add-handle mhnd hnd
+ Adds an easy interface handler to a multi interface handler.
+
+ 
+Function: curl-multi-remove-handle mhad hand
+ Removes an easy interface handler from a multi interface handler. 
+
+
+Function: curl-multi-fdset mhnd
+ Returns a list of three <sys-fdset> from a handler of multi interface.
+
+
+Function: curl-multi-info-read mhnd msg_in_queue
+ Returns easy interface handler(s) that had finished performing in multi interface handlers.
+
+
+Function: curl-multi-strerror errono
+ Turns a return code of libcurl into a message string.
+
+
+Function: curl-share-init
+ Creates a handler of share interface.
+ Returns <curl-share-base>.
+
+
+Function: curl-share-setopt shnd CURLSHOPT_... val
+ Sets a parameter to a handler of share interface.
+ Returns 0 if success.
+
+
+Function: curl-share-strerror
+ Turns a return code of libcurl into a message string.
+
+
+Function: curl-open-file hnd CURLOPT_... filename
+ Binds data (type as specified by CURLOPT_... ) with file handler (as separated by filename) in an easy interface handler.
+ Returns <curl-file> if success. <curl-file> is just FILE*.
+
+
+Function: curl-close-file fp
+ Closes a file pointer object (<curl-file>. 
+ Returns #undef if success.  
+
+
+Function: curl-open-port hnd CURLOPT_... port
+ Binds data (type as specified by CURLOPT_... ) with PORT (as separated by port) in an easy interface handler.
+
+
+Function: curl-list->curl-slist list
+Function: curl-slist->list curl_slist
+ Converts a string list and <curl-slist> mutuality
+
+
+======================================================================
+- These options are supported in easy interface to set parameters like curl(1).
+ a|append
+ A|user-agent
+   anyauth
+ b|cookie
+ B|use-ascii
+   basic
+   ciphers
+   compressed
+   connect-timeout
+ c|cookie-jar
+ C|continue-at (Not support operand '-')
+   crlf
+   crlfile
+ d|data|data-ascii
+   data-binary
+   data-urlencode
+   digest
+   disable-eprt
+   eprt
+   no-eprt
+   disable-epsv
+   epsv
+   no-epsv
+ D|dump-header
+ e|referer
+   engine
+   egd-file
+ E|cert
+   cert-type
+   cacert
+   capath
+ f|fail
+   ftp-account
+   ftp-create-dirs
+   ftp-method
+   ftp-pasv
+   ftp-skip-pasv-ip
+   ftp-alternative-to-user
+   ftp-pret
+   ssl
+   ftp-ssl
+   ftp-ssl-control
+   ssl-reqd
+   ftp-ssl-reqd
+   ftp-ssl-ccc
+   ftp-ssl-ccc-mode
+ F|form
+   form-string
+ G|get
+ H|header
+   hostpubmd5
+   ignore-content-length
+ i|include
+   interface
+ I|head
+ j|junk-session-cookies
+ k|insecure
+   keepalive-time
+   key
+   key-type
+   krb
+   limit-rate
+ l|list-only
+   local-port
+ L|location
+   location-trusted
+   mail-rcpt
+   mail-from
+   max-filesize
+ m|max-time
+   negotiate
+   no-keepalive
+   keepalive
+   no-sessionid
+   sessionid
+   noproxy
+   ntlm
+ o|output
+ O|remote-name
+   pass
+   post301
+   post302
+   proxy-anyauth
+   proxy-basic
+   proxy-digest
+   proxy-negotiate
+   proxy-ntlm
+   proxy1_0
+ p|proxytunnel
+   pubkey
+ P|ftp-port
+ Q|quote
+   random-file
+ r|range
+   raw
+ R|remote-time
+   socks4
+   socks4a
+   socks5-hostname
+   socks5
+   socks5-gssapi-service
+   socks5-gssapi-nec
+   stderr
+   tcp-nodelay
+ t|telnet-option
+   tftp-blksize
+ T|upload-file
+ u|user
+ U|proxy-user
+   url
+ v|verbose
+ x|proxy
+ X|request
+ Y|speed-limit
+ y|speed-time
+ z|time-cond
+   max-redirs
+ 0|http1_0
+ 1|tlsv1
+ 2|sslv2
+ 3|sslv3
+ 4|ipv4
+ 6|ipv6
+ #|progress-bar
+
+
+- These options must be changed like showing.
+ --http1.0  => --http1_0
+ --proxy1.0 => --proxy1_0
+ -#         => Use '--progress-bar' only.
+
+
+- These options are not supported.
+   buffer
+   create-dirs
+   environment
+ g|globoff
+ K|config
+ M|manual
+ N|no-buffer
+ n|netrc
+   netrc-optional
+ q
+   remote-name-all
+   retry
+   retry-delay
+   retry-max-time
+ S|show-error
+ s|silent
+   trace
+   trace-ascii
+   trace-time
+   version
+ w|write-out
+
+
+======================================================================
+
+Todo
+- Confirmation of untested protocols. 
+- Sufficient test about data upload.
+- Better "test.scm"
+
+
+Limitations
+- Not support to wildcard URL of curl(1).
+- These libcurl functions are not implemented a binding. Or not made higher level interfaces. 
+ curl_easy_pause 
+ curl_easy_recv 
+ curl_easy_send 
+ curl_formadd 
+ curl_formfree 
+ curl_formget 
+ curl_free 
+ curl_global_init_mem 
+ curl_multi_assign 
+ curl_multi_socket 
+
+
+Confirmed environments (but only passed "make check")
+- Mac OX X 10.6.3 (libcurl 7.21.0. + Gauche 0.9)
+- Ubuntu 9.04 Jaunty (libcurl 7.21.1. + Gauche 0.9)
+- Mac OX X 10.6.2 (libcurl 7.19.7. + Gauche 0.9)
+- Mac OX X 10.5.8 (libcurl 7.16.3 + Gauche 0.8.14)
+- Mac OX X 10.5.8 (libcurl 7.19.3 + Gauche 0.8.14)
+- Ubuntu 9.04 Jaunty (libcurl 7.18.2 + Gauche 0.8.13)
+- Debian GNU/Linux squeeze/sid (libcurl 7.19.4 + Gauche 0.8.13)
+- FreeBSD 7.1-RELEASE-p6 (libcurl 7.19.4 + Gauche 0.8.14)
+
