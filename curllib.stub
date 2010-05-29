@@ -1,7 +1,7 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;; curllib.stub
 ;;; 
-;;; Last Updated: "2010/05/08 22:26.40"
+;;; Last Updated: "2010/05/29 12:43.06"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -62,18 +62,12 @@
   (body <curl-share-base>
 	"SCM_RESULT = curl_share_init();"))
 
-; set option
+;;; set option
 ;; param expects long, finction pointer, object pointer and curl_off_t
 ;; number -> long
 ;; string -> object pointer(string)
 ;; #f -> NULL
-;; curl_slist
-;;  CURLOPT_HTTPHEADER
-;;  CURLOPT_HTTP200ALIASES
-;;  CURLOPT_PREQUOTE
-;;  CURLOPT_QUOTE
-;;  CURLOPT_POSTQUOTE
-;;  CURLOPT_TELNETOPTIONS
+;; string list -> curl_slist
 ;; **function pointer is not accept from this interface.**
 (define-cproc curl-easy-setopt (hnd::<curl-base> opt::<int> param::<top>)
   (body <int>
@@ -86,17 +80,33 @@
 	"      curlopt == CURLOPT_MAX_SEND_SPEED_LARGE ||"
 	"      curlopt == CURLOPT_MAX_RECV_SPEED_LARGE) {"
 	"    SCM_RESULT = curl_easy_setopt(hnd, curlopt, (curl_off_t)SCM_INT_VALUE(param));"
-	"} else {"
+	"  } else {"
 	"    SCM_RESULT = curl_easy_setopt(hnd, curlopt, (long)SCM_INT_VALUE(param));"
-	"}"
+	"  }"
 	"} else if (SCM_STRINGP(param)) {"
-	"  SCM_RESULT = curl_easy_setopt(hnd, curlopt, SCM_STRING_CONST_CSTRING(param));"
+	"    SCM_RESULT = curl_easy_setopt(hnd, curlopt, SCM_STRING_CONST_CSTRING(param));"
 	"} else if (SCMCURL_SLIST_P(param)) {"
-	"  SCM_RESULT = curl_easy_setopt(hnd, curlopt, SCMCURL_SLIST_UNBOX(param));"
+	"    if (curlopt == CURLOPT_HTTPHEADER ||"
+	"        curlopt == CURLOPT_HTTP200ALIASES ||"
+	"        curlopt == CURLOPT_MAIL_RCPT ||"
+	"        curlopt == CURLOPT_QUOTE ||"
+	"        curlopt == CURLOPT_POSTQUOTE ||"
+	"        curlopt == CURLOPT_PREQUOTE ||"
+	"        curlopt == CURLOPT_TELNETOPTIONS) {"
+	"      SCM_RESULT = curl_easy_setopt(hnd, curlopt, SCMCURL_SLIST_UNBOX(param));"
+	"    } else {"
+	"      Scm_Error(\"curl-easy-setopt doesn't support this data type for this option of a parameter.\");"
+	"    }"
 	"} else if (SCM_FALSEP(param)) {"
-	"  SCM_RESULT = curl_easy_setopt(hnd, curlopt, NULL);"
+	"    SCM_RESULT = curl_easy_setopt(hnd, curlopt, NULL);"
+	"} else if (SCMCURLSH_P(param)) {"
+	"    if (curlopt == CURLOPT_SHARE) {"
+	"      SCM_RESULT = curl_easy_setopt(hnd, curlopt, SCMCURLSH_UNBOX(param));"
+	"    } else {"
+	"      Scm_Error(\"curl-easy-setopt doesn't support this data type for this option of a parameter.\");"
+	"    }"
 	"} else {"
-	"  SCM_RESULT = CURLE_GOT_NOTHING;"
+	"    Scm_Error(\"curl-easy-setopt doesn't support this data type for this option of a parameter.\");"
 	"}"))
 
 ; reset handle

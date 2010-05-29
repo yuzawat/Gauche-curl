@@ -1,3 +1,14 @@
+2010-05-29  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.2.6
+	* curl.scm
+	fix http-* wrapper bug.
+	fix an error handling.
+	* curl.c
+	fix list_to_curl_slist.
+	* curllib.stub
+	fix curl-easy-setopt.
+	
 2010-05-22  yuzawat  <suzdalenator@gmail.com>
 
 	* release 0.2.5

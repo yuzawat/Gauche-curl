@@ -2,7 +2,7 @@
 /*
  * curl.c
  *
- * Last Updated: "2010/05/08 22:31.55"
+ * Last Updated: "2010/05/29 11:18.29"
  *
  * Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
  */
@@ -408,25 +408,31 @@ struct curl_slist *list_to_curl_slist (ScmObj ls)
   struct curl_slist *slist, *last, *next;
   ScmObj str;
 
-  if (SCM_NULLP(ls)) Scm_Error("not allow null list");
+  if (SCM_NULLP(ls)) Scm_Error("curl slist cannot accept a null list.");
 
   slist = SCM_NEW(struct curl_slist);
   last = SCM_NEW(struct curl_slist);
+
   SCM_FOR_EACH(str, ls){
-    if (!slist->data) {
-      slist->data = strdup(Scm_GetStringConst(SCM_STRING(SCM_CAR(str))));
-      slist->next = NULL;
-    } else {
-      next = SCM_NEW(struct curl_slist);
-      next->data = strdup(Scm_GetStringConst(SCM_STRING(SCM_CAR(str))));
-      next->next = NULL;
-      last = slist;
-      while (last->next) {
-	last = last->next;
+    if (SCM_STRINGP(SCM_CAR(str))) {
+      if (!slist->data) {
+	slist->data = strdup(Scm_GetStringConst(SCM_STRING(SCM_CAR(str))));
+	slist->next = NULL;
+      } else {
+	next = SCM_NEW(struct curl_slist);
+	next->data = strdup(Scm_GetStringConst(SCM_STRING(SCM_CAR(str))));
+	next->next = NULL;
+	last = slist;
+	while (last->next) {
+	  last = last->next;
+	}
+	last->next = next;
       }
-      last->next = next;
+    } else {
+      Scm_Error("curl slist accept only strings.");
     }
   }
+
   return slist;
 }
 

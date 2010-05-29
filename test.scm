@@ -71,7 +71,6 @@
 
 
 
-
 (test-section "cooked function")
 ;; make <curl> object
 (define curl (make <curl> :url "http://www.google.com/" 

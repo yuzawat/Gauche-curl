@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl version 7.20.1: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/05/22 17:22.36"
+;;; Last Updated: "2010/05/29 12:43.49"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -33,6 +33,7 @@
   (export 
    <curl>
    <curl-multi>
+   <curl-share>
    <curl-base>
    <curl-multi-base>
    <curl-error>
@@ -564,7 +565,8 @@
 (autoload rfc.http 
 	  http-compose-query
 	  http-compose-form-data
-	  http-user-agent)
+	  http-user-agent
+	  <http-error>)
 
 ;; Loads extension
 (dynamic-load "curl")
@@ -656,14 +658,11 @@
 (define-method initialize ((share <curl-share>) initargs)
   (next-method)
   (slot-set! share 'handler (curl-share-init))
-  (curl-share-setopt (handler-of share) CURLSHOPT_SHARE CURL_LOCK_DATA_COOKIE)
-  (curl-share-setopt (handler-of share) CURLSHOPT_SHARE CURL_LOCK_DATA_DNS))
+  (curl-setopt! share CURLSHOPT_SHARE CURL_LOCK_DATA_COOKIE)
+  (curl-setopt! share CURLSHOPT_SHARE CURL_LOCK_DATA_DNS))
 
 ;; condition
-(define-condition-type <curl-error> <error> 
-  #f
-  (errno)
-  (error))
+(define-condition-type <curl-error> <error> #f)
 
 ;; utils
 ;; libcurl version check
@@ -1217,7 +1216,7 @@
 		      ((vc "7.16.5") (_ c CURLOPT_KEYPASSWD pass))
 		      ((vc "7.9.3") (_ c CURLOPT_SSLKEYPASSWD pass))
 		      (else (_ c CURLOPT_CERTKEYPASSWD pass))))
-_	  (when (vc "7.19.6")
+	  (when (vc "7.19.6")
 	      (when (home-directory)
 		(_ c CURLOPT_SSH_KNOWNHOSTS (string-append (home-directory) "/.ssh/known_hosts"))))))
       ;; FTP
@@ -1285,7 +1284,8 @@ _	  (when (vc "7.19.6")
 	(when mail-rcpt	(_ c CURLOPT_MAIL_RCPT (string-split mail-rcpt #\,)))
 	(when mail-from (_ c CURLOPT_MAIL_FROM mail-from))))))
 
-;; procedure
+;;; procedure
+
 ;; easy interface
 (define-method curl-setopt! ((curl <curl>) opt val)
   (let1 hnd (handler-of curl)
@@ -1296,7 +1296,8 @@ _	  (when (vc "7.19.6")
 	  (when (equal? opt CURLOPT_HTTPHEADER)
 	    (unless (equal? (http-headers-of curl) val)
 	      (set! (http-headers-of curl) (append (http-headers-of curl) val))))
-	  (if (= res 0) #t #f))
+	  (if (= res CURLE_OK) #t 
+	      (error <curl-error> :message (curl-strerror curl))))
 	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-perform ((curl <curl>))
@@ -1305,8 +1306,8 @@ _	  (when (vc "7.19.6")
       (curl-setopt! curl CURLOPT_HTTPHEADER (http-headers-of curl)))
     (if hnd (let1 res (curl-easy-perform hnd)
 	      (slot-set! curl 'rc res)
-	      (cond ((= res 0) #t)
-		    (else #f)))
+	      (cond ((= res CURLE_OK) #t)
+		    (else (error <curl-error> :message (curl-strerror curl)))))
 	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-strerror ((curl <curl>))
@@ -1367,7 +1368,7 @@ _	  (when (vc "7.19.6")
 		 (slot-set! curl 'http-headers '())
 		 (slot-set! curl 'rc #f)
 		 #t)
-		(else #f)))
+		(else (error <curl-error> :message (curl-strerror curl)))))
 	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-reset! ((curl <curl>))
@@ -1378,12 +1379,12 @@ _	  (when (vc "7.19.6")
 		 (curl-setopt! curl CURLOPT_URL (url-of curl))
 		 (slot-set! curl 'rc #f)
 		 #t)
-		(else #f)))
+		(else (error <curl-error> :message (curl-strerror curl)))))
 	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-pause ((curl <curl>) . direction)
   (if (vc "7.18.0")
-      (let1 rc
+      (let1 res
 	  (if (null? direction)
 	      (curl-easy-pause (handler-of curl) CURLPAUSE_ALL)
 	      (cond ((eq (car direction) 'SEND)
@@ -1392,15 +1393,17 @@ _	  (when (vc "7.19.6")
 		     (curl-easy-pause (handler-of curl) CURLPAUSE_RECV))
 		    (else 
 		     (error <curl-error> :message "Pause direction is invalid(only SEND or RECV)."))))
-	(slot-set! curl 'rc rc)
-	(if (= rc 0) #t #f))
+	(slot-set! curl 'rc res)
+	(if (= rc CURLE_OK) #t 
+	    (error <curl-error> :message (curl-strerror curl))))
       (error <curl-error> "This method is unsupported in this version of libcurl.")))
 
 (define-method curl-unpause ((curl <curl>))
   (if (vc "7.18.0")
-      (let1 rc (curl-easy-pause (handler-of curl) CURLPAUSE_CONT)
-	(slot-set! curl 'rc rc)
-	(if (= rc 0) #t #f))
+      (let1 res (curl-easy-pause (handler-of curl) CURLPAUSE_CONT)
+	(slot-set! curl 'rc res)
+	(if (= res CURLE_OK) #t 
+	    (error <curl-error> :message (curl-strerror curl))))
       (error <curl-error> "This method is unsupported in this version of libcurl.")))
 
 ;; multi interface
@@ -1410,49 +1413,58 @@ _	  (when (vc "7.19.6")
 	(if hnd 
 	    (let1 res (curl-multi-setopt (handler-of curlm) opt val)
 	      (slot-set! curlm 'rc res)
-	      (if (= res 0) #t #f))
+	      (if (= res CURLM_OK) #t 
+		  (error <curl-error> :message (curl-strerror curl))))
 	    (error <curl-error> :message "curl multi handler is invalid.")))
       (error <curl-error> "This method is unsupported in this version of libcurl.")))
 
 (define-method curl-timeout! ((curlm <curl-multi>) seconds)
-  (curl-multi-timeout (handler-of curlm) seconds))
+  (let1 hnd (handler-of curlm)
+    (if hnd 
+	(let1 res (curl-multi-timeout (handler-of curlm) seconds)
+	  (slot-set! curlm 'rc res)
+	  (if (= res CURLM_OK) #t 
+	      (error <curl-error> :message (curl-strerror curl))))
+	(error <curl-error> :message "curl multi handler is invalid."))))
 
 (define-method curl-handler-add! ((curlm <curl-multi>) (curl <curl>))
   (let1 res (curl-multi-add-handle (handler-of curlm) (handler-of curl))
-    (if (= res 0)
+    (slot-set! curlm 'rc res)
+    (if (= res CURLM_OK)
 	(begin
 	  (slot-set! curlm 'handlers (append (handlers-of curlm) (list curl)))
 	  (undefined))
-	(error <curl-error> :message "curl handler could not add to multi handler."))))	
+	(error <curl-error> :message (curl-strerror curlm)))))
 
 (define-method curl-handler-remove! ((curlm <curl-multi>) (curl <curl>))
   (let1 res (curl-multi-remove-handle (handler-of curlm) (handler-of curl))
-    (if (= res 0)
+    (slot-set! curlm 'rc res)
+    (if (= res CURLM_OK)
 	(begin
 	  (slot-set! curlm 'handlers (remove (cut eq? <> curl) (handlers-of curlm)))
 	  (undefined))
-	(error <curl-error> :message "curl handler could not remove from multi handler."))))
+	(error <curl-error> :message (curl-strerror curlm)))))
 
 (define-method curl-perform ((curlm <curl-multi>))
   (let1 res (curl-multi-perform (handler-of curlm))
     (slot-set! curlm 'rc (car res))
     (slot-set! curlm 'remains (cdr res))
     (update-multi-results! curlm)
-    (if (<= (slot-ref curlm 'rc) 0) #t
-	#f)))
+    (if (<= (slot-ref curlm 'rc) CURLM_OK) #t
+	(error <curl-error> :message (curl-strerror curlm)))))
 
 (define-method curl-cleanup! ((curlm <curl-multi>))
   (let1 hnd (handler-of curlm)
     (if hnd
 	(let1 res (curl-multi-cleanup hnd)
-	  (cond ((= res 0)
+	  (cond ((= res CURLM_OK)
 		 (for-each (cut curl-cleanup! <>) (handlers-of curlm))
 		 (slot-set! curlm 'handlers '())
 		 (slot-set! curlm 'rc #f)
 		 #t)
 		(else 
 		 (slot-set! curlm 'rc rc)
-		 #f)))
+		 (error <curl-error> :message (curl-strerror curlm)))))
 	(error <curl-error> :message "curl multi handler is invalid."))))
 
 (define-method curl-strerror ((curlm <curl-multi>))
@@ -1484,11 +1496,12 @@ _	  (when (vc "7.19.6")
 
 ;; share interface
 (define-method curl-setopt! ((share <curl-share>) opt val)
-  (let1 hnd (handler-of curlm)
+  (let1 hnd (handler-of share)
     (if hnd 
 	(let1 res (curl-share-setopt (handler-of share) opt val)
 	  (slot-set! share 'rc res)
-	  (if (= res 0) #t #f))
+	  (if (= res CURLSHE_OK) #t 
+	      (error <curl-error> :message (curl-strerror share))))
 	(error <curl-error> :message "curl share handler is invalid."))))
 
 (define-method curl-cleanup! ((share <curl-share>))
@@ -1496,7 +1509,8 @@ _	  (when (vc "7.19.6")
     (if hnd
 	(let1 res (curl-share-cleanup hnd)
 	  (slot-set! share 'rc res)
-	  (if (= res 0) #t #f))
+	  (if (= res CURLSHE_OK) #t 
+	      (error <curl-error> :message (curl-strerror share))))
 	(error <curl-error> :message "curl share handler is invalid."))))
 
 (define-method curl-strerror ((share <curl-share>))
@@ -1543,7 +1557,7 @@ _	  (when (vc "7.19.6")
 			(if (null? out)
 			    (open-output-string)
 			    (if (output-port? (car out)) (car out)
-				(error <curl-error> :message "Set output port."))))
+				(error <curl-error> :message "You must set an output port."))))
 	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-open-input-port ((curl <curl>) in)
@@ -1552,7 +1566,7 @@ _	  (when (vc "7.19.6")
 	(begin0
 	  (curl-open-port hnd CURLOPT_READDATA
 			  (if (input-port? in) in
-			      (else (error <curl-error> :message "Set input port."))))
+			      (else (error <curl-error> :message "You must set an input port."))))
 	  (curl-setopt! curl CURLOPT_POSTFIELDS #f)
 	  (when (eq? in (standard-input-port)) 
 	    (slot-set! curl 'http-headers (append (http-headers-of curl) '("Transfer-Encoding: chunked")))))
@@ -1565,7 +1579,7 @@ _	  (when (vc "7.19.6")
 			(if (null? out)
 			    (open-output-string)
 			    (if (output-port? (car out)) (car out)
-				(error <curl-error> :message "Set output port."))))
+				(error <curl-error> :message "You must set an output port."))))
 	(error <curl-error> :message "curl handler is invalid."))))
 
 ;; utils
@@ -1635,7 +1649,7 @@ _	  (when (vc "7.19.6")
 		       (header-output (curl-open-header-port curl))
 		       (headers opt))
 		  (when verbose (curl-setopt! curl CURLOPT_VERBOSE 1))
-		  (if (equal? method 'HEAD) (curl-setopt! curl CURLOPT_NOBODY 1)
+		  (if (eq? method 'HEAD) (curl-setopt! curl CURLOPT_NOBODY 1)
 		      (curl-setopt! curl CURLOPT_CUSTOMREQUEST (symbol->string method)))
 		  (curl-setopt! curl CURLOPT_USERAGENT (http-user-agent))
 		  (curl-setopt! curl CURLOPT_HTTP_VERSION CURL_HTTP_VERSION_NONE)
@@ -1661,14 +1675,18 @@ _	  (when (vc "7.19.6")
 		  (unless (null? headers)
 		    (curl-setopt! curl CURLOPT_HTTPHEADER
 				  (map (lambda (h) (string-append (keyword->string (car h)) ": " (cadr h))) (slices headers 2))))
-		  (when options (%easy-options curl options))
-		  (if (curl)
-		      (if flusher (flusher output header-output)
-			  (values
-			   (number->string (cdr (assq 'RESPONSE_CODE (curl-getinfo curl))))
-			   (curl-headers->alist (get-output-string header-output) -1)
-			   (get-output-string output)))
-		      #f))))
+		  ;; 'options' adds setting unconfigable options from http-* interface, 
+		  ;;  like ":options `((,CURLOPT_SSL_VERIFYPEER . #f)(,CURLOPT_SSL_VERIFYHOST . 1)))"
+		  (when options
+		    (for-each (lambda (set) (curl-setopt! curl (car set) (cdr set))) options))
+		  (guard (exc ((condition-has-type? exc <curl-error>)
+			       (error <http-error> (slot-ref exc 'message))))
+			 (when (curl)
+			   (if flusher (flusher output header-output)
+			       (values
+				(number->string (cdr (assq 'RESPONSE_CODE (curl-getinfo curl))))
+				(curl-headers->alist (get-output-string header-output) -1)
+				(if (eq? method 'HEAD) #f (get-output-string output)))))))))
 
 (define (ensure-request-uri request-uri enc) ; copy from rfc.http of Gauche 0.9
   (match request-uri
