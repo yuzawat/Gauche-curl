@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl version 7.20.1: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/05/29 12:43.49"
+;;; Last Updated: "2010/05/31 20:06.36"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -685,6 +685,12 @@
   (let1 scheme (values-ref (uri-parse url) 0)
     (if ((string->regexp str) scheme) #t #f)))
 
+;; libssh2 version check
+(define (libssh2c numstr)
+  (let* ((libssh-version (assoc "libssh_version" (curl-version-info)))
+         (version ((#/^.+\/(.+)$/ (cdr libssh-version)) 1)))
+    (version>=? version numstr)))
+
 ;; limit rate unit parser
 (define (parse-unit limit-rate)
   (let1 byte-num ((string->regexp "^(\\d+)([GgMmKkBb]?)$") limit-rate)
@@ -1216,9 +1222,9 @@
 		      ((vc "7.16.5") (_ c CURLOPT_KEYPASSWD pass))
 		      ((vc "7.9.3") (_ c CURLOPT_SSLKEYPASSWD pass))
 		      (else (_ c CURLOPT_CERTKEYPASSWD pass))))
-	  (when (vc "7.19.6")
-	      (when (home-directory)
-		(_ c CURLOPT_SSH_KNOWNHOSTS (string-append (home-directory) "/.ssh/known_hosts"))))))
+	  (when (and (vc "7.19.6") (not insecure) (libssh2c "1.2"))
+	    (when (home-directory)
+	      (_ c CURLOPT_SSH_KNOWNHOSTS (string-append (home-directory) "/.ssh/known_hosts"))))))
       ;; FTP
       (when (pc "ftp")
 	(begin
@@ -1682,11 +1688,12 @@
 		  (guard (exc ((condition-has-type? exc <curl-error>)
 			       (error <http-error> (slot-ref exc 'message))))
 			 (when (curl)
-			   (if flusher (flusher output header-output)
-			       (values
-				(number->string (cdr (assq 'RESPONSE_CODE (curl-getinfo curl))))
-				(curl-headers->alist (get-output-string header-output) -1)
-				(if (eq? method 'HEAD) #f (get-output-string output)))))))))
+			   (values
+			    (number->string (cdr (assq 'RESPONSE_CODE (curl-getinfo curl))))
+			    (curl-headers->alist (get-output-string header-output) -1)
+			    (if (eq? method 'HEAD) #f
+				(if flusher (flusher output header-output)
+				    (get-output-string output)))))))))
 
 (define (ensure-request-uri request-uri enc) ; copy from rfc.http of Gauche 0.9
   (match request-uri

@@ -1,7 +1,7 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;; curllib.stub
 ;;; 
-;;; Last Updated: "2010/05/29 12:43.06"
+;;; Last Updated: "2010/05/31 21:45.48"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -616,7 +616,7 @@
       (define-enum CURLOPT_SOCKS5_GSSAPI_SERVICE)
       (define-enum CURLOPT_SOCKS5_GSSAPI_NEC)
       (define-enum CURLOPT_TFTP_BLKSIZE)))
-;; (>= 7.19.6)
+;; (>= 7.19.6) (...and HAVE_LIBSSH2_KNOWNHOST_API in "libssh2.h". But can't check it here!)
 (if "LIBCURL_VERSION_NUM >= 0x071306"
     (begin
       (define-enum CURLOPT_SSH_KNOWNHOSTS)

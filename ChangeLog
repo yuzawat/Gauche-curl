@@ -1,3 +1,12 @@
+2010-05-31  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.2.7
+	* curl.scm
+	fix http-* wrapper bug when using 'sink' and 'flusher".
+	* curl.scm
+	* curllib.stub
+	fix %easy-options bug: CURLOPT_SSH_KNOWNHOSTS doesn't work when libssh2 version is under 1.1. workaround.
+
 2010-05-29  yuzawat  <suzdalenator@gmail.com>
 
 	* release 0.2.6
