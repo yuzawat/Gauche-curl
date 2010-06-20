@@ -1,9 +1,9 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;;
 ;;; libcurl binding for gauche
-;;;  libcurl version 7.20.1: <http://curl.haxx.se/libcurl/>
+;;;  libcurl version 7.21.0: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/05/31 20:06.36"
+;;; Last Updated: "2010/06/20 15:40.43"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -28,6 +28,7 @@
   (use rfc.822)
   (use rfc.uri)
   (use srfi-1)
+  (use srfi-13)
   (use util.list)
   (use util.match)
   (export 
@@ -444,6 +445,9 @@
    CURLINFO_APPCONNECT_TIME
    CURLINFO_CERTINFO
    CURLINFO_CONDITION_UNMET
+   CURLINFO_PRIMARY_PORT
+   CURLINFO_LOCAL_IP
+   CURLINFO_LOCAL_PORT
    CURLINFO_LASTONE
 
    CURL_HTTP_VERSION_NONE
@@ -558,7 +562,35 @@
    CURL_RTSPREQ_GET_PARAMETER
    CURL_RTSPREQ_SET_PARAMETER
    CURL_RTSPREQ_RECORD
-   CURL_RTSPREQ_RECEIVE))
+   CURL_RTSPREQ_RECEIVE
+
+   ;; PROTO enum values
+   CURLPROTO_HTTP
+   CURLPROTO_HTTPS
+   CURLPROTO_FTP
+   CURLPROTO_FTPS
+   CURLPROTO_SCP
+   CURLPROTO_SFTP
+   CURLPROTO_TELNET
+   CURLPROTO_LDAP
+   CURLPROTO_LDAPS
+   CURLPROTO_DICT
+   CURLPROTO_FILE
+   CURLPROTO_TFTP
+   CURLPROTO_IMAP
+   CURLPROTO_IMAPS
+   CURLPROTO_POP3
+   CURLPROTO_POP3S
+   CURLPROTO_SMTP
+   CURLPROTO_SMTPS
+   CURLPROTO_RTSP
+   CURLPROTO_RTMP
+   CURLPROTO_RTMPT
+   CURLPROTO_RTMPE
+   CURLPROTO_RTMPTE
+   CURLPROTO_RTMPS
+   CURLPROTO_RTMPTS
+   CURLPROTO_ALL))
 
 (select-module curl)
 
@@ -668,7 +700,7 @@
 ;; libcurl version check
 (define (vc numstr)
   (let1 version (cdr (assoc "version" (curl-version-info)))
-    (version>? version numstr)))
+    (version>=? version numstr)))
 
 ;; libcurl features check
 (define (fc str)
@@ -760,6 +792,52 @@
 				    (opt-parse (cdr fnparts))))))
 	 (string-split (pstr 2) #\,))))
 
+(define (protocol->number str)
+  (let* ((protocols
+          (list (cons "all" CURLPROTO_ALL)
+                (cons "http" CURLPROTO_HTTP)
+                (cons "https" CURLPROTO_HTTPS)
+                (cons "ftp" CURLPROTO_FTP)
+                (cons "ftps" CURLPROTO_FTPS)
+                (cons "scp" CURLPROTO_SCP)
+                (cons "sftp" CURLPROTO_SFTP)
+                (cons "telnet" CURLPROTO_TELNET)
+                (cons "ldap" CURLPROTO_LDAP)
+                (cons "ldaps" CURLPROTO_LDAPS)
+                (cons "dict" CURLPROTO_DICT)
+                (cons "file" CURLPROTO_FILE)
+                (cons "tftp" CURLPROTO_TFTP)
+                (cons "imap" CURLPROTO_IMAP)
+                (cons "imaps" CURLPROTO_IMAPS)
+                (cons "pop3" CURLPROTO_POP3)
+                (cons "pop3s" CURLPROTO_POP3S)
+                (cons "smtp" CURLPROTO_SMTP)
+                (cons "smtps" CURLPROTO_SMTPS)
+                (cons "rtsp" CURLPROTO_RTSP)))
+         (proto-ls (map (lambda (p)
+			  (cond (((string->regexp "^([\+\-\=])?(.+)$") p) =>
+				 (lambda (r)
+				   (let ((action (if (r 1) (r 1) "+"))
+					 (type (cdr (assoc (string-downcase (r 2)) protocols))))
+				     (cons action type))))
+				(else (error "protocol string format is invalid.")))) (string-split str #\,))))
+    (let loop ((proto CURLPROTO_ALL)
+               (proto-ls proto-ls))
+      (if (null? proto-ls) proto
+          (let ((action (car (car proto-ls)))
+                (type (cdr (car proto-ls))))
+            (loop (cond ((equal? action "=") type)
+                        ((equal? action "+") (logior proto type))
+                        ((equal? action "-") (logand proto (lognot type))))
+                  (cdr proto-ls)))))))
+
+(define (check-and-create-directory fn create)
+  (let* ((n (sys-normalize-pathname fn :expand #t  :canonicalize #t :absolute #t))
+	 (d (sys-dirname n)))
+    (if (file-is-directory? d) n
+	(if create (begin (make-directory* d) n)
+	    (error <curl-error> (string-append d " doesn't exist."))))))
+
 ; parse options
 (define-method %easy-options ((curl <curl>) args)
   (let ((argls (if (string? args) (string-split args #/\s+/) args))
@@ -778,7 +856,7 @@
 	 (connect-timeout "connect-timeout=i" #f)
 	 (cookie-jar "c|cookie-jar=s" #f)
 	 (continue-at "C|continue-at=i" #f)
-	 ;; --create-dirs (not implemented)
+	 (create-dirs "create-dirs" #f)
 	 (crlf "crlf" #f)
 	 (crlfile "crlfile=s" #f)
 	 (data "d|data|data-ascii=s" #f)
@@ -860,6 +938,8 @@
 	 (pass "pass=s" #f)
 	 (post301 "post301" #f)
 	 (post302 "post302" #f)
+	 (proto "proto=s" #f)
+	 (proto-redir "proto-redir=s" #f)
 	 (proxy-anyauth "proxy-anyauth" #f)
 	 (proxy-basic "proxy-basic" #f)
 	 (proxy-digest "proxy-digest" #f)
@@ -936,6 +1016,10 @@
 	    (_ c CURLOPT_RESUME_FROM_LARGE resume)
 	    (_ c CURLOPT_RESUME_FROM resume)))
       (when progress-bar (curl-set-progress! c #t))
+      (when (vc "7.21.0")
+	(begin
+	  (when proto (_ c CURLOPT_PROTOCOLS (protocol->number proto)))
+	  (when proto-redir (_ c CURLOPT_REDIR_PROTOCOLS (protocol->number proto-redir)))))
       ;; speed
       (when speed-time
 	(begin 
@@ -1016,12 +1100,14 @@
 	      (_ c CURLOPT_POSTFIELDSIZE_LARGE -1)
 	      (_ c CURLOPT_POSTFIELDSIZE -1))))
       ;; output
-      (if output (curl-open-output-file c output) (curl-open-port hnd CURLOPT_WRITEDATA (current-output-port)))
+      (if output (curl-open-output-file c output :create-dir (if create-dirs #t #f))
+	  (curl-open-port hnd CURLOPT_WRITEDATA (current-output-port)))
       (when remote-name (curl-open-output-file curl
 					       (let1 fn (sys-basename (values-ref (uri-parse (url-of c)) 4))
-						 (if (equal? fn "") "index.html" fn))))
+						 (if (equal? fn "") "index.html" fn))
+					       :create-dir #f))
       (if remote-time (_ c CURLOPT_FILETIME 1) (_ c CURLOPT_FILETIME 0))
-      (when dump-header (curl-open-header-file c dump-header))
+      (when dump-header (curl-open-header-file c dump-header :create-dir #f))
       (when max-filesize 
 	(if (fc "Largefile")
 	    (_ c CURLOPT_MAXFILESIZE_LARGE max-filesize)
@@ -1361,7 +1447,10 @@
 	  ,(if (vc "7.19.0") (cons 'PRIMARY_IP (_ hnd CURLINFO_PRIMARY_IP)) #f)
 	  ,(if (vc "7.19.0") (cons 'APPCONNECT_TIME (_ hnd CURLINFO_APPCONNECT_TIME)) #f)
 	  ,(if (and (vc "7.19.1") (fc "SSL")) (cons 'CERTINFO (_ hnd CURLINFO_CERTINFO)) #f)
-	  ,(if (vc "7.19.4") (cons 'CONDITION_UNMET (_ hnd CURLINFO_CONDITION_UNMET)) #f)))
+	  ,(if (vc "7.19.4") (cons 'CONDITION_UNMET (_ hnd CURLINFO_CONDITION_UNMET)) #f)
+	  ,(if (vc "7.20.1") (cons 'PRIMARY_PORT (_ hnd CURLINFO_PRIMARY_PORT)) #f)
+	  ,(if (vc "7.20.1") (cons 'LOCAL_IP (_ hnd CURLINFO_LOCAL_IP)) #f)
+	  ,(if (vc "7.20.1") (cons 'LOCAL_PORT (_ hnd CURLINFO_LOCAL_PORT)) #f)))
     (error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-cleanup! ((curl <curl>))
@@ -1527,35 +1616,50 @@
       (error <curl-error> "This method is unsupported in this version of libcurl.")))
 
 ;; I/O
-(define-method curl-open-output-file ((curl <curl>) filename)
-  (let1 hnd (handler-of curl)
-    (if hnd
-	(curl-open-file hnd CURLOPT_WRITEDATA filename)
-	(error <curl-error> :message "curl handler is invalid."))))
+(define-method curl-open-output-file ((curl <curl>) filename . opts)
+  (let-keywords opts 
+		((create-dir :create-dir #f)
+		 . opt)
+		(let1 hnd (handler-of curl)
+		  (if hnd
+		      (curl-open-file hnd CURLOPT_WRITEDATA 
+				      (check-and-create-directory filename create-dir))
+		      (error <curl-error> :message "curl handler is invalid.")))))
 
 (define-method curl-open-input-file ((curl <curl>) filename)
-  (let1 hnd (handler-of curl)
+  (let ((hnd (handler-of curl))
+	(fn (sys-normalize-pathname filename :expand #t  :canonicalize #t :absolute #t)))
+    (unless (file-is-regular? fn) 
+      (error <curl-error> :message (string-append filename " doesn't exist, or not readable.")))
     (if hnd
 	(begin0 
-	  (curl-open-file hnd CURLOPT_READDATA filename)
+	  (curl-open-file hnd CURLOPT_READDATA fn)
 	  (curl-setopt! curl CURLOPT_POSTFIELDS #f)
 	  (if (fc "Largefile")
 	      (curl-setopt! curl CURLOPT_POSTFIELDSIZE_LARGE -1)
 	      (curl-setopt! curl CURLOPT_POSTFIELDSIZE -1)))
 	(error <curl-error> :message "curl handler is invalid."))))
 
-(define-method curl-open-header-file ((curl <curl>) filename)
-  (let1 hnd (handler-of curl)
-    (if hnd
-	(curl-open-file hnd CURLOPT_WRITEHEADER filename)
-	(error <curl-error> :message "curl handler is invalid."))))
+(define-method curl-open-header-file ((curl <curl>) filename . opts)
+  (let-keywords opts 
+		((create-dir :create-dir #f)
+		 . opt)
+		(let1 hnd (handler-of curl)
+		  (if hnd
+		      (curl-open-file hnd CURLOPT_WRITEHEADER 
+				      (check-and-create-directory filename create-dir))
+		      (error <curl-error> :message "curl handler is invalid.")))))
 
-(define-method curl-open-error-file ((curl <curl>) filename)
-  (let1 hnd (handler-of curl)
-    (if hnd
-	(curl-open-file hnd CURLOPT_STDERR filename)
-	(error <curl-error> :message "curl handler is invalid."))))
-	 
+(define-method curl-open-error-file ((curl <curl>) filename . opts)
+  (let-keywords opts 
+		((create-dir :create-dir #f)
+		 . opt)
+		(let1 hnd (handler-of curl)
+		  (if hnd
+		      (curl-open-file hnd CURLOPT_STDERR 
+				      (check-and-create-directory filename create-dir))
+		      (error <curl-error> :message "curl handler is invalid.")))))
+
 (define-method curl-open-output-port ((curl <curl>) . out)
   (let1 hnd (handler-of curl)
     (if hnd

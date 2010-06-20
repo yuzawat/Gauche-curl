@@ -2,7 +2,7 @@
 /*
  * curl.c
  *
- * Last Updated: "2010/05/29 11:18.29"
+ * Last Updated: "2010/06/16 21:57.40"
  *
  * Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
  */
@@ -487,6 +487,9 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
 #if LIBCURL_VERSION_NUM >= 0x071300
     case CURLINFO_PRIMARY_IP:
 #endif
+#if LIBCURL_VERSION_NUM >= 0x071500
+    case CURLINFO_LOCAL_IP:
+#endif
       rc = curl_easy_getinfo(hnd, info, &string_result);
       if ( rc == 0 ) {
 	if (string_result == NULL) {
@@ -543,6 +546,10 @@ ScmObj _curl_easy_getinfo(CURL* hnd, int info)
 #endif
 #if LIBCURL_VERSION_NUM >= 0x071304
     case CURLINFO_CONDITION_UNMET:
+#endif
+#if LIBCURL_VERSION_NUM >= 0x071500
+    case CURLINFO_PRIMARY_PORT:
+    case CURLINFO_LOCAL_PORT:
 #endif
       rc = curl_easy_getinfo(hnd, info, &long_result);
       if ( rc == 0) {

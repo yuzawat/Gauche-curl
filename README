@@ -7,7 +7,7 @@ Abstract:
  
 Author: yuzawat <suzdalenator at gmail.com>
 
-Version: 0.2.7 2010/05/31
+Version: 0.2.8 2010/06/20
 ======================================================================
 
 Module: curl
@@ -170,14 +170,14 @@ Method: curl-multi-info->list (cm <curl-multi>)
  Returns a list of a pair as a return code and <curl-base> ('((rc . <curl-base>)...)).
 
 
-Method: curl-open-output-file (c <curl>) filename
+Method: curl-open-output-file (c <curl>) filename &keyword create-dir
 Method: curl-open-input-file (c <curl>) filename
-Method: curl-open-header-file (c <curl>) filename
-Method: curl-open-error-file (c <curl>) filename
+Method: curl-open-header-file (c <curl>) filename &keyword create-dir
+Method: curl-open-error-file (c <curl>) filename &keyword create-dir
  Binds downloaded data, upload data, header information and debug information to a file in a filename string.
  Returns <curl-file>. <curl-file> is a file pointer. A file pointer must close clealy to flush a buffer. Use curl-close-file to close it. 
  These methods have counterpart to curl-open-*-port, except for curl-open-error-file.
-
+ On setting a keyword operand "create-dir" as #t, it creates directories for a file to output, when they doesn't exist.
 
 Method: curl-open-output-port (c <curl>) &optional outport
 Method: curl-open-input-port (c <curl>) inport
@@ -230,6 +230,7 @@ Function: http-post server request-uri body &keyword sink flusher no-redirect se
 Function: http-put server request-uri body &keyword sink flusher no-redirect secure ...
 Function: http-delete server request-uri &keyword sink flusher no-redirect secure ...
  Wrappers of same name functions which are defined in rfc.http. Maybe it works same.
+ But libcurl reads some environment variables, "http_proxy" "HTTPS_PROXY" "FTP_PROXY" "ALL_PROXY" and "NO_PROXY", then sets proxy settings. this is not same.
  Setting a keyword :secure #t, it uses a SSL connection (compatible to 0.9.1?)
 
 
@@ -410,6 +411,7 @@ Function: curl-slist->list curl_slist
    connect-timeout
  c|cookie-jar
  C|continue-at (Not support operand '-')
+   create-dirs
    crlf
    crlfile
  d|data|data-ascii
@@ -481,6 +483,8 @@ Function: curl-slist->list curl_slist
    pass
    post301
    post302
+   proto
+   proto-redir
    proxy-anyauth
    proxy-basic
    proxy-digest
@@ -533,7 +537,6 @@ Function: curl-slist->list curl_slist
 
 - These options are not supported.
    buffer
-   create-dirs
    environment
  g|globoff
  K|config

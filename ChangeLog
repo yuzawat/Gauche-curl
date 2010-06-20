@@ -1,3 +1,23 @@
+2010-06-20  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.2.8
+	libcurl version 7.21.0
+	* curl.scm
+	* curllib.stub
+	* curl.c
+	add those to %easy-options.
+	 "--proto"
+	 "--proto-redir"
+	add curl information types, curl-getinfo retunes the following.
+	 "CURLINFO_PRIMARY_PORT"
+	 "CURLINFO_LOCAL_IP"
+	 "CURLINFO_LOCAL_PORT"
+	add a check routine about diretory existing for output file.
+ 	 curl-open-output-file, curl-open-header-file, curl-open-error-file are accepted ketword 'create-dir'.
+	 and add the following to %easy-options.
+	  "--create-dirs"
+
+
 2010-05-31  yuzawat  <suzdalenator@gmail.com>
 
 	* release 0.2.7

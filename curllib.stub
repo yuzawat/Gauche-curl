@@ -1,7 +1,7 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;; curllib.stub
 ;;; 
-;;; Last Updated: "2010/05/31 21:45.48"
+;;; Last Updated: "2010/06/17 22:08.15"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -806,6 +806,13 @@
 ;; (>= 7.19.4)
 (if "LIBCURL_VERSION_NUM >= 0x071304"
     (define-enum CURLINFO_CONDITION_UNMET))
+;; (>= 7.21.0)
+(if "LIBCURL_VERSION_NUM >= 0x071500"
+    (begin
+      (define-enum CURLINFO_PRIMARY_PORT)
+      (define-enum CURLINFO_LOCAL_IP)
+      (define-enum CURLINFO_LOCAL_PORT)))
+
 (define-enum CURLINFO_LASTONE)
 
 ;; curl_infotype
@@ -1050,6 +1057,42 @@
       (define-enum CURL_RTSPREQ_SET_PARAMETER)
       (define-enum CURL_RTSPREQ_RECORD)
       (define-enum CURL_RTSPREQ_RECEIVE)))
+
+; (>= 7.19.4)
+(if "LIBCURL_VERSION_NUM >= 0x071304"
+    (begin 
+      (define-enum CURLPROTO_HTTP)
+      (define-enum CURLPROTO_HTTPS)
+      (define-enum CURLPROTO_FTP)
+      (define-enum CURLPROTO_FTPS)
+      (define-enum CURLPROTO_SCP)
+      (define-enum CURLPROTO_SFTP)
+      (define-enum CURLPROTO_TELNET)
+      (define-enum CURLPROTO_LDAP)
+      (define-enum CURLPROTO_LDAPS)
+      (define-enum CURLPROTO_DICT)
+      (define-enum CURLPROTO_FILE)
+      (define-enum CURLPROTO_TFTP)
+      (define-enum CURLPROTO_ALL)))
+; (>= 7.20.0)
+(if "LIBCURL_VERSION_NUM >= 0x071400"
+    (begin 
+      (define-enum CURLPROTO_IMAP)
+      (define-enum CURLPROTO_IMAPS)
+      (define-enum CURLPROTO_POP3)
+      (define-enum CURLPROTO_POP3S)
+      (define-enum CURLPROTO_SMTP)
+      (define-enum CURLPROTO_SMTPS)
+      (define-enum CURLPROTO_RTSP)))
+; (>= 7.21.0)
+(if "LIBCURL_VERSION_NUM >= 0x071500"
+    (begin 
+      (define-enum CURLPROTO_RTMP)
+      (define-enum CURLPROTO_RTMPT)
+      (define-enum CURLPROTO_RTMPE)
+      (define-enum CURLPROTO_RTMPTE)
+      (define-enum CURLPROTO_RTMPS)
+      (define-enum CURLPROTO_RTMPTS)))
 
 ;; Local variables:
 ;; mode: scheme
