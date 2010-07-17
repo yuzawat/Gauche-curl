@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl version 7.21.0: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/06/20 15:40.43"
+;;; Last Updated: "2010/07/17 13:22.40"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -24,6 +24,7 @@
   (use file.util)
   (use gauche.mop.singleton)
   (use gauche.parseopt)
+  (use gauche.threads)
   (use gauche.version)
   (use rfc.822)
   (use rfc.uri)
@@ -600,14 +601,16 @@
 	  http-user-agent
 	  <http-error>)
 
-;; Loads extension
+;;; Loads extension
 (dynamic-load "curl")
 
-;; global init
+
+;;; global init
 (curl-global-init CURL_GLOBAL_ALL)
 (define curl-share-enable #t)
 
-;; classes
+
+;;; classes
 (define-class <curl-meta> ()
   ((handler :allocation :instance
 	    :accessor handler-of)
@@ -615,7 +618,7 @@
        :accessor rc-of
        :init-value #f)))
 
-; easy interface
+;; easy interface
 (define-class <curl> (<curl-meta>)
   ((url :allocation :instance
 	:init-keyword :url
@@ -629,6 +632,11 @@
 	      :init-keyword :no-option
 	      :init-value #f
 	      :accessor no-option-of)
+   (reuse :allocation :instance
+	  :init-keyword :reuse
+	  :init-value #t)
+   (info :allocation :instance
+	 :init-value #f)
    (progress :allocation :instance
 	     :init-keyword :progress
 	     :init-value #f
@@ -639,9 +647,16 @@
 
 (define-method initialize ((curl <curl>) initargs)
   (next-method)
-  (slot-set! curl 'handler (curl-easy-init))
-  (when (slot-bound? curl 'url)
-    (curl-setopt! curl CURLOPT_URL (url-of curl)))
+  (if (and (slot-bound? curl 'url) 
+	   (not (equal? (slot-ref curl 'url) "")))
+      (begin
+	(slot-set! curl 'handler (if (and (slot-ref curl 'reuse) enthread?)
+				     (let1 sought (seek-pool (url-of curl))
+				       (if sought sought 
+					   (curl-easy-init)))
+				     (curl-easy-init)))
+	(curl-setopt! curl CURLOPT_URL (url-of curl)))
+      (slot-set! curl 'handler (curl-easy-init)))
   (unless (no-option-of curl)
     (when (slot-bound? curl 'options)
       (%easy-options curl (options-of curl)))))
@@ -649,7 +664,7 @@
 (define-method object-apply ((curl <curl>))
   (curl-perform curl))
 
-; multi interface
+;; multi interface
 (define-class <curl-multi> (<curl-meta>)
   ((handlers :allocation :instance
 	     :init-value '()
@@ -683,7 +698,7 @@
 (define-method object-apply ((curlm <curl-multi>))
   (curl-perform curlm))
 
-; share interface
+;; share interface
 (define-class <curl-share> (<curl-meta> <singleton-mixin>)
   ())
 
@@ -693,10 +708,15 @@
   (curl-setopt! share CURLSHOPT_SHARE CURL_LOCK_DATA_COOKIE)
   (curl-setopt! share CURLSHOPT_SHARE CURL_LOCK_DATA_DNS))
 
-;; condition
+
+;;; condition
 (define-condition-type <curl-error> <error> #f)
 
-;; utils
+
+;;; utils
+(define enthread?
+  (not (eq? (gauche-thread-type) 'none)))
+
 ;; libcurl version check
 (define (vc numstr)
   (let1 version (cdr (assoc "version" (curl-version-info)))
@@ -760,7 +780,8 @@
 	(default-type (if (not (null? default))
 			 (car default) #f)))
     (let1 suffix (path-extension fn)
-      (if suffix (hash-table-get content-types suffix default-type) default-type))))
+      (if suffix (hash-table-get content-types suffix default-type) 
+	  default-type))))
 
 ;; This function passes a form option string to http-compose-form-data. 
 ;; But, it don't work completely as same as curl(1).
@@ -838,7 +859,46 @@
 	(if create (begin (make-directory* d) n)
 	    (error <curl-error> (string-append d " doesn't exist."))))))
 
-; parse options
+
+;;; connection pool
+(define pool (make-hash-table 'string=?))
+
+(define touching-pool 
+  (if enthread? (make-mutex 'touching-pool) 
+      #f))
+
+(define (seek-pool url)
+  (if (and enthread? (vc "7.12.1"))
+      (if (eq? (mutex-state touching-pool) 'not-abandoned)
+	  (begin
+	    (mutex-lock! touching-pool)
+	    (let* ((u (make-url-key url))
+		   (c (hash-table-get pool u #f)))
+	      (cond (c (hash-table-delete! pool u)
+		       (mutex-unlock! touching-pool)
+		       (curl-easy-reset c)
+		       c)
+		    (else
+		     (mutex-unlock! touching-pool) 
+		     #f))))
+	  #f)
+      #f))
+
+(define-method put-pool ((c <curl-base>))
+  (when enthread?
+    (when (eq? (mutex-state touching-pool) 'not-abandoned)
+      (begin
+	(mutex-lock! touching-pool)
+	(hash-table-put! pool (make-url-key (curl-easy-getinfo c CURLINFO_EFFECTIVE_URL)) c)
+	(mutex-unlock! touching-pool)))))
+
+(define (make-url-key url)
+  (receive (scheme #f server port #f #f #f)
+      (uri-parse url)
+    (string-append scheme server (if port (x->string port) ""))))
+
+
+;;; parse options
 (define-method %easy-options ((curl <curl>) args)
   (let ((argls (if (string? args) (string-split args #/\s+/) args))
 	(hnd (handler-of curl))
@@ -1376,6 +1436,7 @@
 	(when mail-rcpt	(_ c CURLOPT_MAIL_RCPT (string-split mail-rcpt #\,)))
 	(when mail-from (_ c CURLOPT_MAIL_FROM mail-from))))))
 
+
 ;;; procedure
 
 ;; easy interface
@@ -1398,6 +1459,10 @@
       (curl-setopt! curl CURLOPT_HTTPHEADER (http-headers-of curl)))
     (if hnd (let1 res (curl-easy-perform hnd)
 	      (slot-set! curl 'rc res)
+	      (when (and (slot-ref curl 'reuse) enthread?)
+		(begin
+		  (put-pool hnd)
+		  (slot-set! curl 'info (curl-getinfo curl))))
 	      (cond ((= res CURLE_OK) #t)
 		    (else (error <curl-error> :message (curl-strerror curl)))))
 	(error <curl-error> :message "curl handler is invalid."))))
@@ -1410,48 +1475,50 @@
       (error <curl-error> "This method is unsupported in this version of libcurl.")))
 
 (define-method curl-getinfo ((curl <curl>))
-  (let ((hnd (handler-of curl))
-	(_ curl-easy-getinfo))
-    (if hnd
-	(remove not
-	`(,(cons 'EFFECTIVE_URL (_ hnd CURLINFO_EFFECTIVE_URL))
-	  ,(cons 'RESPONSE_CODE (_ hnd CURLINFO_RESPONSE_CODE))
-	  ,(cons 'TOTAL_TIME (_ hnd CURLINFO_TOTAL_TIME))
-	  ,(cons 'NAMELOOKUP_TIME (_ hnd CURLINFO_NAMELOOKUP_TIME)) 
-	  ,(cons 'CONNECT_TIME (_ hnd CURLINFO_CONNECT_TIME))
-	  ,(cons 'PRETRANSFER_TIME (_ hnd CURLINFO_PRETRANSFER_TIME)) 
-	  ,(cons 'SIZE_UPLOAD (_ hnd CURLINFO_SIZE_UPLOAD))
-	  ,(cons 'SIZE_DOWNLOAD (_ hnd CURLINFO_SIZE_DOWNLOAD)) 
-	  ,(cons 'SPEED_DOWNLOAD (_ hnd CURLINFO_SPEED_DOWNLOAD)) 
-	  ,(cons 'SPEED_UPLOAD (_ hnd CURLINFO_SPEED_UPLOAD))
-	  ,(cons 'HEADER_SIZE (_ hnd CURLINFO_HEADER_SIZE))
-	  ,(cons 'REQUEST_SIZE (_ hnd CURLINFO_REQUEST_SIZE)) 
-	  ,(cons 'CONTENT_LENGTH_UPLOAD (_ hnd CURLINFO_CONTENT_LENGTH_UPLOAD))
-	  ,(cons 'STARTTRANSFER_TIME (_ hnd CURLINFO_STARTTRANSFER_TIME))
-	  ,(cons 'CONTENT_TYPE (_ hnd CURLINFO_CONTENT_TYPE))
-	  ,(cons 'CONTENT_LENGTH_DOWNLOAD (_ hnd CURLINFO_CONTENT_LENGTH_DOWNLOAD))
-	  ,(cons 'HTTP_CONNECTCODE (_ hnd CURLINFO_HTTP_CONNECTCODE))
-	  ,(if (fc "SSL") (cons 'SSL_VERIFYRESULT (_ hnd CURLINFO_SSL_VERIFYRESULT)) #f)
-	  ,(if (vc "7.5") (cons 'FILETIME (_ hnd CURLINFO_FILETIME)) #f)
-	  ,(if (vc "7.9.7") (cons 'REDIRECT_TIME (_ hnd CURLINFO_REDIRECT_TIME)) #f)
-	  ,(if (vc "7.9.7") (cons 'REDIRECT_COUNT (_ hnd CURLINFO_REDIRECT_COUNT)) #f)
-	  ,(if (vc "7.10.8") (cons 'HTTPAUTH_AVAIL (_ hnd CURLINFO_HTTPAUTH_AVAIL)) #f)
-	  ,(if (vc "7.10.8") (cons 'PROXYAUTH_AVAIL (_ hnd CURLINFO_PROXYAUTH_AVAIL)) #f)
-	  ,(if (vc "7.12.2") (cons 'OS_ERRNO (_ hnd CURLINFO_OS_ERRNO)) #f)
-	  ,(if (vc "7.12.2") (cons 'NUM_CONNECTS (_ hnd CURLINFO_NUM_CONNECTS)) #f)
-	  ,(if (and (vc "7.13.3") (fc "SSL")) (cons 'SSL_ENGINES (_ hnd CURLINFO_SSL_ENGINES)) #f)
-	  ,(if (vc "7.14.1") (cons 'COOKIELIST (_ hnd CURLINFO_COOKIELIST)) #f)
-	  ,(if (vc "7.15.2") (cons 'LATSOCKET (_ hnd CURLINFO_LASTSOCKET)) #f)
-	  ,(if (and (vc "7.15.4") (sc "ftp" (url-of curl))) (cons 'FTP_ENTRY_PATH (_ hnd CURLINFO_FTP_ENTRY_PATH)) #f)
-	  ,(if (vc "7.18.2") (cons 'REDIRECT_URL (_ hnd CURLINFO_REDIRECT_URL)) #f)
-	  ,(if (vc "7.19.0") (cons 'PRIMARY_IP (_ hnd CURLINFO_PRIMARY_IP)) #f)
-	  ,(if (vc "7.19.0") (cons 'APPCONNECT_TIME (_ hnd CURLINFO_APPCONNECT_TIME)) #f)
-	  ,(if (and (vc "7.19.1") (fc "SSL")) (cons 'CERTINFO (_ hnd CURLINFO_CERTINFO)) #f)
-	  ,(if (vc "7.19.4") (cons 'CONDITION_UNMET (_ hnd CURLINFO_CONDITION_UNMET)) #f)
-	  ,(if (vc "7.20.1") (cons 'PRIMARY_PORT (_ hnd CURLINFO_PRIMARY_PORT)) #f)
-	  ,(if (vc "7.20.1") (cons 'LOCAL_IP (_ hnd CURLINFO_LOCAL_IP)) #f)
-	  ,(if (vc "7.20.1") (cons 'LOCAL_PORT (_ hnd CURLINFO_LOCAL_PORT)) #f)))
-    (error <curl-error> :message "curl handler is invalid."))))
+  (let1 info (slot-ref curl 'info)
+    (if info info
+	(let ((hnd (handler-of curl))
+	      (_ curl-easy-getinfo))
+	  (if hnd
+	      (remove not
+		      `(,(cons 'EFFECTIVE_URL (_ hnd CURLINFO_EFFECTIVE_URL))
+			,(cons 'RESPONSE_CODE (_ hnd CURLINFO_RESPONSE_CODE))
+			,(cons 'TOTAL_TIME (_ hnd CURLINFO_TOTAL_TIME))
+			,(cons 'NAMELOOKUP_TIME (_ hnd CURLINFO_NAMELOOKUP_TIME)) 
+			,(cons 'CONNECT_TIME (_ hnd CURLINFO_CONNECT_TIME))
+			,(cons 'PRETRANSFER_TIME (_ hnd CURLINFO_PRETRANSFER_TIME)) 
+			,(cons 'SIZE_UPLOAD (_ hnd CURLINFO_SIZE_UPLOAD))
+			,(cons 'SIZE_DOWNLOAD (_ hnd CURLINFO_SIZE_DOWNLOAD)) 
+			,(cons 'SPEED_DOWNLOAD (_ hnd CURLINFO_SPEED_DOWNLOAD)) 
+			,(cons 'SPEED_UPLOAD (_ hnd CURLINFO_SPEED_UPLOAD))
+			,(cons 'HEADER_SIZE (_ hnd CURLINFO_HEADER_SIZE))
+			,(cons 'REQUEST_SIZE (_ hnd CURLINFO_REQUEST_SIZE)) 
+			,(cons 'CONTENT_LENGTH_UPLOAD (_ hnd CURLINFO_CONTENT_LENGTH_UPLOAD))
+			,(cons 'STARTTRANSFER_TIME (_ hnd CURLINFO_STARTTRANSFER_TIME))
+			,(cons 'CONTENT_TYPE (_ hnd CURLINFO_CONTENT_TYPE))
+			,(cons 'CONTENT_LENGTH_DOWNLOAD (_ hnd CURLINFO_CONTENT_LENGTH_DOWNLOAD))
+			,(cons 'HTTP_CONNECTCODE (_ hnd CURLINFO_HTTP_CONNECTCODE))
+			,(if (fc "SSL") (cons 'SSL_VERIFYRESULT (_ hnd CURLINFO_SSL_VERIFYRESULT)) #f)
+			,(if (vc "7.5") (cons 'FILETIME (_ hnd CURLINFO_FILETIME)) #f)
+			,(if (vc "7.9.7") (cons 'REDIRECT_TIME (_ hnd CURLINFO_REDIRECT_TIME)) #f)
+			,(if (vc "7.9.7") (cons 'REDIRECT_COUNT (_ hnd CURLINFO_REDIRECT_COUNT)) #f)
+			,(if (vc "7.10.8") (cons 'HTTPAUTH_AVAIL (_ hnd CURLINFO_HTTPAUTH_AVAIL)) #f)
+			,(if (vc "7.10.8") (cons 'PROXYAUTH_AVAIL (_ hnd CURLINFO_PROXYAUTH_AVAIL)) #f)
+			,(if (vc "7.12.2") (cons 'OS_ERRNO (_ hnd CURLINFO_OS_ERRNO)) #f)
+			,(if (vc "7.12.2") (cons 'NUM_CONNECTS (_ hnd CURLINFO_NUM_CONNECTS)) #f)
+			,(if (and (vc "7.13.3") (fc "SSL")) (cons 'SSL_ENGINES (_ hnd CURLINFO_SSL_ENGINES)) #f)
+			,(if (vc "7.14.1") (cons 'COOKIELIST (_ hnd CURLINFO_COOKIELIST)) #f)
+			,(if (vc "7.15.2") (cons 'LATSOCKET (_ hnd CURLINFO_LASTSOCKET)) #f)
+			,(if (and (vc "7.15.4") (sc "ftp" (url-of curl))) (cons 'FTP_ENTRY_PATH (_ hnd CURLINFO_FTP_ENTRY_PATH)) #f)
+			,(if (vc "7.18.2") (cons 'REDIRECT_URL (_ hnd CURLINFO_REDIRECT_URL)) #f)
+			,(if (vc "7.19.0") (cons 'PRIMARY_IP (_ hnd CURLINFO_PRIMARY_IP)) #f)
+			,(if (vc "7.19.0") (cons 'APPCONNECT_TIME (_ hnd CURLINFO_APPCONNECT_TIME)) #f)
+			,(if (and (vc "7.19.1") (fc "SSL")) (cons 'CERTINFO (_ hnd CURLINFO_CERTINFO)) #f)
+			,(if (vc "7.19.4") (cons 'CONDITION_UNMET (_ hnd CURLINFO_CONDITION_UNMET)) #f)
+			,(if (vc "7.20.1") (cons 'PRIMARY_PORT (_ hnd CURLINFO_PRIMARY_PORT)) #f)
+			,(if (vc "7.20.1") (cons 'LOCAL_IP (_ hnd CURLINFO_LOCAL_IP)) #f)
+			,(if (vc "7.20.1") (cons 'LOCAL_PORT (_ hnd CURLINFO_LOCAL_PORT)) #f)))
+	      (error <curl-error> :message "curl handler is invalid."))))))
 
 (define-method curl-cleanup! ((curl <curl>))
   (let1 hnd (handler-of curl)
@@ -1692,7 +1759,8 @@
 				(error <curl-error> :message "You must set an output port."))))
 	(error <curl-error> :message "curl handler is invalid."))))
 
-;; utils
+
+;;; utils
 (define (curl-headers->alist headers-str . num)
   (let1 ls (remove null? (map (lambda  (h) (rfc822-read-headers (open-input-string h)))
 			      (string-split headers-str "\r\n\r\n")))
@@ -1721,7 +1789,8 @@
       (curl-setopt! curl CURLOPT_POSTFIELDSIZE_LARGE -1)
       (curl-setopt! curl CURLOPT_POSTFIELDSIZE -1)))
 
-;; progress functions
+
+;;; progress functions
 (define-method curl-set-progress! ((curl <curl>) . show-bar)
   (if (not (slot-ref curl 'progress))
       (if (null? show-bar)
@@ -1735,7 +1804,7 @@
       '()))
 
 
-;; wrapper procedure
+;;; wrapper procedure
 ;; Common
 (define (http-common method hostname path body . opts)
   (let-keywords opts ((sink :sink #f)

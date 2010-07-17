@@ -7,7 +7,7 @@ Abstract:
  
 Author: yuzawat <suzdalenator at gmail.com>
 
-Version: 0.2.8 2010/06/20
+Version: 0.2.9 2010/07/17
 ======================================================================
 
 Module: curl
@@ -71,6 +71,14 @@ Instance Variable of <curl>: rc
 
 Instance Variable of <curl>: progress
  It stores a progress counter of download/upload.
+
+
+Instance Variable of <curl>: reuse
+ If #t, reuses a connection when you will connect the same host and port once again.
+
+
+Instance Variable of <curl>: info
+ When :reuse is #t, it stores a result of 'curl-getinfo' automatically after a connection.
 
 
 Class: <curl-multi>

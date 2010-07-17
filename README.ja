@@ -6,7 +6,7 @@ Abstract:
  
 Author: yuzawat <suzdalenator ＠ gmail.coml>
 
-Version: 0.2.8 2010/06/20
+Version: 0.2.9 2010/07/17
 ======================================================================
 
 Module: curl
@@ -65,6 +65,14 @@ Instance Variable of <curl>: rc
 
 Instance Variable of <curl>: progress
  ハンドラーのダウンロード・アップロードの進捗データが格納されています。
+
+
+Instance Variable of <curl>: reuse
+ #t だと一度接続したコネクションを、同じサーバとポートへ接続する際に再利用します。
+
+
+Instance Variable of <curl>: info
+ :reuse が #t だった場合に、接続後の curl-getinfo の結果を自動的に取得して格納します。
 
 
 Class: <curl-multi>
@@ -224,7 +232,7 @@ Function: http-put server request-uri body &keyword sink flusher no-redirect sec
 Function: http-delete server request-uri &keyword sink flusher no-redirect secure ...
 
  モジュールrfc.httpで定義されている同名の Functionと同じインターフェイスを実現するためのラッパーです。多分、だいたい同じ動きをすると思います。
- しかし、libcurlが、環境変数"http_proxy", "HTTPS_PROXY", "FTP_PROXY", "ALL_PROXY", "NO_PROXY"を参照して、Proxyの設定を行なうため、この挙動は異なります。
+ しかし、libcurlが、環境変数"http_proxy", "HTTPS_PROXY", "FTP_PROXY", "ALL_PROXY", "NO_PROXY"を参照して、Proxyの設定を勝手に行なうため、この挙動は異なります。
  キーワード :secure を #t とすることで、SSL接続を行います（"0.9.1"互換？）
 
 ----

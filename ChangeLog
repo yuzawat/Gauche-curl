@@ -1,3 +1,11 @@
+2010-07-17  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.2.9
+	* curl.scm
+	add connection pool function (reusing <curl-base> which had connected once).
+	add new slots (reuse and info) to <curl> class.
+
+
 2010-06-20  yuzawat  <suzdalenator@gmail.com>
 
 	* release 0.2.8
