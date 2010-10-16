@@ -6,7 +6,7 @@ Abstract:
  
 Author: yuzawat <suzdalenator ＠ gmail.coml>
 
-Version: 0.2.9 2010/07/17
+Version: 0.2.10 2010/10/16
 ======================================================================
 
 Module: curl
@@ -526,8 +526,8 @@ Todo
 
 
 動作確認環境（と云っても、"make check"が通るだけ）
-- Mac OX X 10.6.3 (libcurl 7.21.0. + Gauche 0.9)
-- Ubuntu 9.04 Jaunty (libcurl 7.21.1. + Gauche 0.9)
+- Mac OX X 10.6.4 (libcurl 7.21.2. + Gauche 0.9)
+- Ubuntu 9.04 Jaunty (libcurl 7.21.2. + Gauche 0.9)
 - Mac OX X 10.6.2 (libcurl 7.19.7. + Gauche 0.9)
 - Mac OX X 10.5.8 (libcurl 7.16.3 + Gauche 0.8.14)
 - Mac OX X 10.5.8 (libcurl 7.19.3 + Gauche 0.8.14)

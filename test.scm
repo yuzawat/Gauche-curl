@@ -2,6 +2,7 @@
 ;;; Test curl
 ;;;
 (use gauche.test)
+(use gauche.version)
 
 (test-start "curl")
 (use curl)
@@ -37,8 +38,11 @@
 ;; misc utils
 (test-section "curl misc utils")
 (define hnd (curl-easy-init))
-(test* "curl-easy-escape" "This%20is%20a%20test%2E"
-       (curl-easy-escape hnd "This is a test." 0))
+(if (version<=? "7.21.2" (cdr (assoc "version" (curl-version-info))))
+    (test* "curl-easy-escape" "This%20is%20a%20test."
+	   (curl-easy-escape hnd "This is a test." 0))
+    (test* "curl-easy-escape" "This%20is%20a%20test%2E"
+	   (curl-easy-escape hnd "This is a test." 0)))
 (test* "curl-easy-unescape" "This is a test."
        (curl-easy-unescape hnd "This%20is%20a%20test%2E" 0 0))
 (curl-easy-cleanup hnd)

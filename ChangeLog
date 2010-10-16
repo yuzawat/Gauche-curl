@@ -1,3 +1,13 @@
+2010-10-16  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.2.10
+	libcurl version 7.21.2
+	* curl.scm
+	modify curl-cleanup! to work with connection pool.
+	* test.scm
+	modify about checking curl-easy-escape, because of 'curl_easy_escape: don't escape "unreserved" characters'.
+
+
 2010-07-17  yuzawat  <suzdalenator@gmail.com>
 
 	* release 0.2.9

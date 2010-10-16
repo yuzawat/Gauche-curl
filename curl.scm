@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl version 7.21.0: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/07/17 13:22.40"
+;;; Last Updated: "2010/10/16 16:57.55"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -1523,14 +1523,16 @@
 (define-method curl-cleanup! ((curl <curl>))
   (let1 hnd (handler-of curl)
     (if hnd
-	(let1 res (curl-easy-cleanup hnd)
-	  (cond ((undefined? res)
-		 (slot-set! curl 'handler #f)
-		 (slot-set! curl 'url "")
-		 (slot-set! curl 'http-headers '())
-		 (slot-set! curl 'rc #f)
-		 #t)
-		(else (error <curl-error> :message (curl-strerror curl)))))
+	(begin
+	  (if (slot-ref curl 'reuse) (put-pool hnd)
+	      (let1 res (curl-easy-cleanup hnd)
+		(unless (undefined? res)
+		  (error <curl-error> :message (curl-strerror curl)))))
+	  (slot-set! curl 'handler #f)
+	  (slot-set! curl 'url "")
+	  (slot-set! curl 'http-headers '())
+	  (slot-set! curl 'rc #f)
+	  #t)
 	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-reset! ((curl <curl>))
