@@ -7,7 +7,7 @@ Abstract:
  
 Author: yuzawat <suzdalenator at gmail.com>
 
-Version: 0.2.10 2010/10/16
+Version: 0.2.11 2010/12/29
 ======================================================================
 
 Module: curl
@@ -239,7 +239,7 @@ Function: http-put server request-uri body &keyword sink flusher no-redirect sec
 Function: http-delete server request-uri &keyword sink flusher no-redirect secure ...
  Wrappers of same name functions which are defined in rfc.http. Maybe it works same.
  But libcurl reads some environment variables, "http_proxy" "HTTPS_PROXY" "FTP_PROXY" "ALL_PROXY" and "NO_PROXY", then sets proxy settings. this is not same.
- Setting a keyword :secure #t, it uses a SSL connection (compatible to 0.9.1?)
+ Setting a keyword :secure #t, it uses a SSL connection (compatible to 0.9.1)
 
 
 ----
@@ -507,6 +507,7 @@ Function: curl-slist->list curl_slist
  r|range
    raw
  R|remote-time
+   resolve
    socks4
    socks4a
    socks5-hostname
@@ -590,6 +591,9 @@ Limitations
 
 
 Confirmed environments (but only passed "make check")
+- Mac OX X 10.6.5 (libcurl 7.21.3. + Gauche 0.9.1)
+- Ubuntu 10.10 Maverick Meerkat (libcurl 7.21.3. + Gauche 0.9.1)
+- Ubuntu 10.10 Maverick Meerkat (libcurl 7.21.0. + Gauche 0.9)
 - Mac OX X 10.6.4 (libcurl 7.21.2. + Gauche 0.9)
 - Ubuntu 9.04 Jaunty (libcurl 7.21.2. + Gauche 0.9)
 - Mac OX X 10.6.2 (libcurl 7.19.7. + Gauche 0.9)

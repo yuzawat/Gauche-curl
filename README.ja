@@ -6,7 +6,7 @@ Abstract:
  
 Author: yuzawat <suzdalenator ＠ gmail.coml>
 
-Version: 0.2.10 2010/10/16
+Version: 0.2.11 2010/12/29
 ======================================================================
 
 Module: curl
@@ -233,7 +233,7 @@ Function: http-delete server request-uri &keyword sink flusher no-redirect secur
 
  モジュールrfc.httpで定義されている同名の Functionと同じインターフェイスを実現するためのラッパーです。多分、だいたい同じ動きをすると思います。
  しかし、libcurlが、環境変数"http_proxy", "HTTPS_PROXY", "FTP_PROXY", "ALL_PROXY", "NO_PROXY"を参照して、Proxyの設定を勝手に行なうため、この挙動は異なります。
- キーワード :secure を #t とすることで、SSL接続を行います（"0.9.1"互換？）
+ キーワード :secure を #t とすることで、SSL接続を行います（"0.9.1"互換）
 
 ----
 下位インターフェース
@@ -443,6 +443,7 @@ Function: curl-slist->list curl_slist
  r|range
    raw
  R|remote-time
+   resolve
    socks4
    socks4a
    socks5-hostname
@@ -526,6 +527,9 @@ Todo
 
 
 動作確認環境（と云っても、"make check"が通るだけ）
+- Mac OX X 10.6.5 (libcurl 7.21.3. + Gauche 0.9.1)
+- Ubuntu 10.10 Maverick Meerkat (libcurl 7.21.3. + Gauche 0.9.1)
+- Ubuntu 10.10 Maverick Meerkat (libcurl 7.21.0. + Gauche 0.9)
 - Mac OX X 10.6.4 (libcurl 7.21.2. + Gauche 0.9)
 - Ubuntu 9.04 Jaunty (libcurl 7.21.2. + Gauche 0.9)
 - Mac OX X 10.6.2 (libcurl 7.19.7. + Gauche 0.9)

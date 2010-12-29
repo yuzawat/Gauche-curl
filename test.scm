@@ -6,7 +6,7 @@
 
 (test-start "curl")
 (use curl)
-(test-module 'curl)
+#;(test-module 'curl)
 
 ; global constants init
 (test* "curl-global-init" 0

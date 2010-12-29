@@ -1,7 +1,7 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;; curllib.stub
 ;;; 
-;;; Last Updated: "2010/06/17 22:08.15"
+;;; Last Updated: "2010/12/29 21:52.20"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -73,26 +73,41 @@
   (body <int>
 	"CURLoption curlopt = opt;"
 	"if (SCM_NUMBERP(param)) {"
-	"  if (curlopt == CURLOPT_INFILESIZE_LARGE ||"
-	"      curlopt == CURLOPT_RESUME_FROM_LARGE ||"
-	"      curlopt == CURLOPT_MAXFILESIZE_LARGE ||"
-	"      curlopt == CURLOPT_POSTFIELDSIZE_LARGE ||"
-	"      curlopt == CURLOPT_MAX_SEND_SPEED_LARGE ||"
-	"      curlopt == CURLOPT_MAX_RECV_SPEED_LARGE) {"
+	"#if LIBCURL_VERSION_NUM >= 0x070a09"
+	"  if (curlopt == CURLOPT_INFILESIZE_LARGE"
+	"      || curlopt == CURLOPT_RESUME_FROM_LARGE"
+	"      || curlopt == CURLOPT_MAXFILESIZE_LARGE"
+	"#if LIBCURL_VERSION_NUM >= 0x070b01"
+	"      || curlopt == CURLOPT_POSTFIELDSIZE_LARGE"
+	"#endif"
+	"#if LIBCURL_VERSION_NUM >= 0x070f05"
+	"      || curlopt == CURLOPT_MAX_SEND_SPEED_LARGE"
+	"      || curlopt == CURLOPT_MAX_RECV_SPEED_LARGE"
+	"#endif"
+	"      ) {"
 	"    SCM_RESULT = curl_easy_setopt(hnd, curlopt, (curl_off_t)SCM_INT_VALUE(param));"
 	"  } else {"
 	"    SCM_RESULT = curl_easy_setopt(hnd, curlopt, (long)SCM_INT_VALUE(param));"
 	"  }"
+	"#else"
+	"    SCM_RESULT = curl_easy_setopt(hnd, curlopt, (long)SCM_INT_VALUE(param));"
+	"#endif"
 	"} else if (SCM_STRINGP(param)) {"
 	"    SCM_RESULT = curl_easy_setopt(hnd, curlopt, SCM_STRING_CONST_CSTRING(param));"
 	"} else if (SCMCURL_SLIST_P(param)) {"
-	"    if (curlopt == CURLOPT_HTTPHEADER ||"
-	"        curlopt == CURLOPT_HTTP200ALIASES ||"
-	"        curlopt == CURLOPT_MAIL_RCPT ||"
-	"        curlopt == CURLOPT_QUOTE ||"
-	"        curlopt == CURLOPT_POSTQUOTE ||"
-	"        curlopt == CURLOPT_PREQUOTE ||"
-	"        curlopt == CURLOPT_TELNETOPTIONS) {"
+	"    if (curlopt == CURLOPT_HTTPHEADER"
+	"        || curlopt == CURLOPT_HTTP200ALIASES"
+	"        || curlopt == CURLOPT_QUOTE"
+	"        || curlopt == CURLOPT_POSTQUOTE"
+	"        || curlopt == CURLOPT_PREQUOTE"
+	"        || curlopt == CURLOPT_TELNETOPTIONS"
+	"#if LIBCURL_VERSION_NUM >= 0x071400"
+	"        || curlopt == CURLOPT_MAIL_RCPT"
+	"#endif"
+	"#if LIBCURL_VERSION_NUM >= 0x071503"
+	"        || curlopt == CURLOPT_RESOLVE"
+	"#endif"
+	"        ) {"
 	"      SCM_RESULT = curl_easy_setopt(hnd, curlopt, SCMCURL_SLIST_UNBOX(param));"
 	"    } else {"
 	"      Scm_Error(\"curl-easy-setopt doesn't support this data type for this option of a parameter.\");"
@@ -637,6 +652,9 @@
       (define-enum CURLOPT_MAIL_FROM)
       (define-enum CURLOPT_MAIL_RCPT)
       (define-enum CURLOPT_FTP_USE_PRET)))
+; (>= 7.21.3)
+(if "LIBCURL_VERSION_NUM >= 0x071503"
+    (define-enum CURLOPT_RESOLVE))
 
 (define-enum CURLOPTTYPE_OFF_T)
 
@@ -835,7 +853,9 @@
       (define-enum CURLAUTH_GSSNEGOTIATE)
       (define-enum CURLAUTH_NTLM)
       (define-enum CURLAUTH_ANY)
-      (define-enum CURLAUTH_ANYSAFE)))
+      (define-enum CURLAUTH_ANYSAFE)
+      (if "LIBCURL_VERSION_NUM >= 0x071503"
+	  (define-enum CURLAUTH_ONLY))))
 ;; (>= 7.19.3)
 (if "LIBCURL_VERSION_NUM >= 0x071303"
     (define-enum CURLAUTH_DIGEST_IE))

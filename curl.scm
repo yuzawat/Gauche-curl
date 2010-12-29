@@ -1,9 +1,9 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;;
 ;;; libcurl binding for gauche
-;;;  libcurl version 7.21.0: <http://curl.haxx.se/libcurl/>
+;;;  libcurl version 7.21.3: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/10/16 16:57.55"
+;;; Last Updated: "2010/12/29 21:49.19"
 ;;;
 ;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
 
@@ -140,6 +140,7 @@
    http-compose-query
    http-compose-form-data
    http-user-agent
+   http-secure-connection-available?
 
    ;; curl response code
    CURLE_OK
@@ -408,6 +409,7 @@
    CURLOPT_MAIL_FROM
    CURLOPT_MAIL_RCPT
    CURLOPT_FTP_USE_PRET
+   CURLOPT_RESOLVE
 
    ;; curl information code
    CURLINFO_NONE
@@ -649,13 +651,15 @@
   (next-method)
   (if (and (slot-bound? curl 'url) 
 	   (not (equal? (slot-ref curl 'url) "")))
-      (begin
+      (let1 urlstr (slot-ref curl 'url)
+	(unless (values-ref (uri-parse urlstr) 0) 
+	  (error <curl-error> :message #`",urlstr is not URL."))
 	(slot-set! curl 'handler (if (and (slot-ref curl 'reuse) enthread?)
-				     (let1 sought (seek-pool (url-of curl))
+				     (let1 sought (seek-pool urlstr)
 				       (if sought sought 
 					   (curl-easy-init)))
 				     (curl-easy-init)))
-	(curl-setopt! curl CURLOPT_URL (url-of curl)))
+	(curl-setopt! curl CURLOPT_URL urlstr))
       (slot-set! curl 'handler (curl-easy-init)))
   (unless (no-option-of curl)
     (when (slot-bound? curl 'options)
@@ -735,13 +739,19 @@
 ;; URL scheme check
 (define (sc str url)
   (let1 scheme (values-ref (uri-parse url) 0)
-    (if ((string->regexp str) scheme) #t #f)))
+    (if scheme (if ((string->regexp str) scheme) #t #f)
+	#f)))
 
 ;; libssh2 version check
 (define (libssh2c numstr)
   (let* ((libssh-version (assoc "libssh_version" (curl-version-info)))
          (version ((#/^.+\/(.+)$/ (cdr libssh-version)) 1)))
     (version>=? version numstr)))
+
+;; SSL library type check
+(define (ssltypec)
+  (if (#/^OpenSSL/ (cdr (assoc "ssl_version" (curl-version-info)))) 'OPENSSL 
+      'GNUTLS))
 
 ;; limit rate unit parser
 (define (parse-unit limit-rate)
@@ -1015,6 +1025,7 @@
 	 (range "r|range=s" #f)
 	 (raw "raw" #f)
 	 (remote-time "R|remote-time=s" #f)
+	 (resolve "resolve=s" #f)
 	 ;; --retry (not implemented)
 	 ;; --retry-delay (not implemented)
 	 ;; --retry-max-time (not implemented)
@@ -1040,6 +1051,7 @@
 	 (verbose "v|verbose" #f)
 	 ;; -V/--version (not implemented)
 	 ;; -w/--write-out (not implemented)
+	 ;; --xattr (not implemented)
 	 (proxy "x|proxy=s" #f)
 	 (request "X|request=s" #f)
 	 (speed-limit "Y|speed-limit=i" #f)
@@ -1070,7 +1082,7 @@
 		      (begin
 			(_ c CURLOPT_LOCALPORT (string->number (m 1)))
 			(when (m 3) (_ c CURLOPT_LOCALPORTRANGE (string->number (m 3)))))))
-		(else <curl-error> :message "local port range is invalid."))))
+		(else (error <curl-error> :message "local port range is invalid.")))))
       (let1 resume (if continue-at continue-at 0)
 	(if (fc "Largefile")
 	    (_ c CURLOPT_RESUME_FROM_LARGE resume)
@@ -1080,6 +1092,13 @@
 	(begin
 	  (when proto (_ c CURLOPT_PROTOCOLS (protocol->number proto)))
 	  (when proto-redir (_ c CURLOPT_REDIR_PROTOCOLS (protocol->number proto-redir)))))
+      (when (vc "7.21.3")
+        (when resolve
+	  (let1 resolve-ls (if (list? resolve) resolve (list resolve))
+	    (for-each (lambda (r) (unless (#/^.+:\d+:.+$/ r) 
+				    (error <curl-error> :message "resolve option requires a string as HOST:PORT:ADDRESS."))) 
+		      resolve-ls)
+	    (_ c CURLOPT_RESOLVE (curl-list->curl-slist resolve-ls)))))
       ;; speed
       (when speed-time
 	(begin 
@@ -1180,7 +1199,7 @@
       (when basic (_ c CURLOPT_HTTPAUTH CURLAUTH_BASIC))
       (when digest (_ c CURLOPT_HTTPAUTH CURLAUTH_DIGEST))
       (when (fc "GSS-Negotiate") (when negotiate (_ c CURLOPT_HTTPAUTH CURLAUTH_GSSNEGOTIATE)))
-      (when (fc "NTLM") (when ntlm (_ c CURLOPT_HTTPAUTH CURLAUTH_NTLM)))
+      (when (or (fc "NTLM") (eq? (ssltypec) 'OPENSSL)) (when ntlm (_ c CURLOPT_HTTPAUTH CURLAUTH_NTLM)))
       (when anyauth (_ c CURLOPT_HTTPAUTH CURLAUTH_ANY))
       ;; proxy
       (if proxy 
@@ -1299,12 +1318,12 @@
       ;; SSL
       (when (fc "SSL")
 	(begin
-	  (when (vc "7.19.1") (_ c CURLOPT_CERTINFO 1))
+	  (when (and (vc "7.19.1") (eq? (ssltypec) 'OPENSSL)) (_ c CURLOPT_CERTINFO 1))
 	  (when tlsv1 (_ c CURLOPT_SSLVERSION CURL_SSLVERSION_TLSv1))
 	  (when sslv2 (_ c CURLOPT_SSLVERSION CURL_SSLVERSION_SSLv2))
 	  (when sslv3 (_ c CURLOPT_SSLVERSION CURL_SSLVERSION_SSLv3))
 	  (when cacert (_ c CURLOPT_SSLCERT cacert))
-	  (when capath (_ c CURLOPT_CAPATH capath))
+	  (when (and capath (eq? (ssltypec) 'OPENSSL)) (_ c CURLOPT_CAPATH capath))
 	  (when cert-type 
 	    (cond ((equal? cert-type "PEM") (_ c CURLOPT_SSLCERTTYPE cert-type))
 		  ((equal? cert-type "DER") (_ c CURLOPT_SSLCERTTYPE cert-type))
@@ -1877,6 +1896,9 @@
     [_ (error "Invalid request-uri form for http request API:" request-uri)]))
 
 (http-user-agent (string-append "gauche.http/" (gauche-version) " (" (curl-version) ")"))
+
+(define (http-secure-connection-available?)
+  (if (fc "SSL") #t #f))
 
 ;; GET
 (define (http-get hostname path . opt)

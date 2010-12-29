@@ -1,3 +1,17 @@
+2010-12-29  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.2.11
+	libcurl version 7.21.3
+	Gauche-0.9.1
+	* curl.scm
+	add "--resolve" to %easy-options.
+	add "http-secure-connection-available?".
+	add SSL Library type check (OpenSSL or GnuTLS)
+	* curllib.stub
+	add CURLOPT_RESOLVE.
+	(maybe) fixed a compile error occuring when older versions of libcurl is used.
+
+	
 2010-10-16  yuzawat  <suzdalenator@gmail.com>
 
 	* release 0.2.10
