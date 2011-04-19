@@ -1,11 +1,11 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;;
 ;;; libcurl binding for gauche
-;;;  libcurl version 7.21.3: <http://curl.haxx.se/libcurl/>
+;;;  libcurl version 7.21.5: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2010/12/29 21:49.19"
+;;; Last Updated: "2011/04/19 22:07.29"
 ;;;
-;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
+;;;  Copyright (c) 2011  yuzawat <suzdalenator@gmail.com>
 
 
 ;;; Example
@@ -217,6 +217,9 @@
    CURLE_REMOTE_FILE_NOT_FOUND
    CURLE_SSH
    CURLE_SSL_SHUTDOWN_FAILED
+   CURLE_NOT_BUILT_IN
+   CURLE_UNKNOWN_OPTION
+
    CURLE_AGAIN
 
    ;; global flags
@@ -410,6 +413,9 @@
    CURLOPT_MAIL_RCPT
    CURLOPT_FTP_USE_PRET
    CURLOPT_RESOLVE
+   CURLOPT_TLSAUTH_TYPE
+   CURLOPT_TLSAUTH_USERNAME
+   CURLOPT_TLSAUTH_PASSWORD
 
    ;; curl information code
    CURLINFO_NONE
@@ -551,6 +557,11 @@
    CURL_TIMECOND_IFUNMODSINCE
    CURL_TIMECOND_LASTMOD
 
+   ;; .netrc option
+   CURL_NETRC_OPTIONAL
+   CURL_NETRC_IGNORED
+   CURL_NETRC_REQUIRED
+
    ;; curl socktype
    CURLSOCKTYPE_IPCXN
 
@@ -606,6 +617,9 @@
 ;;; Loads extension
 (dynamic-load "curl")
 
+;; libcurl information
+(define-constant *curl-version-info* (curl-version-info))
+(define-constant *curl-version* (curl-version))
 
 ;;; global init
 (curl-global-init CURL_GLOBAL_ALL)
@@ -723,17 +737,17 @@
 
 ;; libcurl version check
 (define (vc numstr)
-  (let1 version (cdr (assoc "version" (curl-version-info)))
+  (let1 version (cdr (assoc "version" *curl-version-info*))
     (version>=? version numstr)))
 
 ;; libcurl features check
 (define (fc str)
-  (let1 features (cdr (assoc "features" (curl-version-info)))
+  (let1 features (cdr (assoc "features" *curl-version-info*))
     (if ((string->regexp str) features) #t #f)))
 
 ;; libcurl support protocols check
 (define (pc str)
-  (let1 protocols (cdr (assoc "protocols" (curl-version-info)))
+  (let1 protocols (cdr (assoc "protocols" *curl-version-info*))
     (if ((string->regexp str) protocols) #t #f)))
 
 ;; URL scheme check
@@ -744,14 +758,18 @@
 
 ;; libssh2 version check
 (define (libssh2c numstr)
-  (let* ((libssh-version (assoc "libssh_version" (curl-version-info)))
+  (let* ((libssh-version (assoc "libssh_version" *curl-version-info*))
          (version ((#/^.+\/(.+)$/ (cdr libssh-version)) 1)))
     (version>=? version numstr)))
 
 ;; SSL library type check
+;; 'OpenSSL', 'GnuTLS', 'NSS', 'CyaSSL', 'PolarSSL' or 'axTLS'. 
+;; But only checks about OpenSSL or GnuTLS now.
 (define (ssltypec)
-  (if (#/^OpenSSL/ (cdr (assoc "ssl_version" (curl-version-info)))) 'OPENSSL 
-      'GNUTLS))
+  (let1 ssllib (cdr (assoc "ssl_version" *curl-version-info*))
+    (cond ((#/^OpenSSL/ ssllib) 'OPENSSL)
+	  ((#/^GnuTLS/ ssllib) 'GNUTLS)
+	  (else 'UNKNOWN_SSLLIB))))
 
 ;; limit rate unit parser
 (define (parse-unit limit-rate)
@@ -992,8 +1010,9 @@
 	 (max-filesize "max-filesize=i" #f)
 	 (max-time "m|max-time=i" #f)
 	 ;; -M/--manual (not implemented)
-	 ;; -n/--netrc (not implemented)
-	 ;; --netrc-optional (not implemented)
+	 (netrc "n|netrc" #f) 
+	 (netrc-opt "netrc-optional" #f)
+	 (netrc-file "netrc-file" #f)
 	 (negotiate "negotiate" #f)
 	 ;; -N/--no-buffer (not implemented)
 	 (no-keepalive "no-keepalive" #f)
@@ -1099,6 +1118,15 @@
 				    (error <curl-error> :message "resolve option requires a string as HOST:PORT:ADDRESS."))) 
 		      resolve-ls)
 	    (_ c CURLOPT_RESOLVE (curl-list->curl-slist resolve-ls)))))
+      ;; .netrc
+      (cond (netrc-opt
+	     (_ c CURLOPT_NETRC CURL_NETRC_OPTIONAL))
+	    ((or netrc netrc-file)
+	     (_ c CURLOPT_NETRC CURL_NETRC_REQUIRED))
+	    (else 
+	     (_ c CURLOPT_NETRC CURL_NETRC_IGNORED)))
+      (when netrc-file 
+	(_ c CURLOPT_NETRC_FILE netrc-file))
       ;; speed
       (when speed-time
 	(begin 
@@ -1123,7 +1151,7 @@
       (when stderr (curl-open-file hnd CURLOPT_STDERR stderr))
       ;; HTTP
       (if user-agent (_ c CURLOPT_USERAGENT user-agent) 
-	  (_ c CURLOPT_USERAGENT (string-append "Gauche/" (gauche-version) " " (curl-version))))
+	  (_ c CURLOPT_USERAGENT (string-append "Gauche/" (gauche-version) " " *curl-version*)))
       (if location (_ c CURLOPT_FOLLOWLOCATION 1) (_ c CURLOPT_FOLLOWLOCATION 0)) 
       (if location-trusted (_ c CURLOPT_UNRESTRICTED_AUTH 1) (_ c CURLOPT_UNRESTRICTED_AUTH 0))
       (if max-redirs (_ c CURLOPT_MAXREDIRS max-redirs) (_ c CURLOPT_MAXREDIRS -1))
@@ -1895,7 +1923,7 @@
     [(path n&v ...) (http-compose-query path n&v enc)]
     [_ (error "Invalid request-uri form for http request API:" request-uri)]))
 
-(http-user-agent (string-append "gauche.http/" (gauche-version) " (" (curl-version) ")"))
+(http-user-agent (string-append "gauche.http/" (gauche-version) " (" *curl-version* ")"))
 
 (define (http-secure-connection-available?)
   (if (fc "SSL") #t #f))

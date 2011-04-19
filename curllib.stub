@@ -1,9 +1,9 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;; curllib.stub
 ;;; 
-;;; Last Updated: "2010/12/29 21:52.20"
+;;; Last Updated: "2011/04/19 20:33.27"
 ;;;
-;;;  Copyright (c) 2010  yuzawat <suzdalenator@gmail.com>
+;;;  Copyright (c) 2011  yuzawat <suzdalenator@gmail.com>
 
 "
 #include \"gauche-curl.h\"
@@ -655,6 +655,12 @@
 ; (>= 7.21.3)
 (if "LIBCURL_VERSION_NUM >= 0x071503"
     (define-enum CURLOPT_RESOLVE))
+; (>= 7.21.4)
+(if "LIBCURL_VERSION_NUM >= 0x071504"
+    (begin 
+      (define-enum CURLOPT_TLSAUTH_TYPE)
+      (define-enum CURLOPT_TLSAUTH_USERNAME)
+      (define-enum CURLOPT_TLSAUTH_PASSWORD)))
 
 (define-enum CURLOPTTYPE_OFF_T)
 
@@ -755,6 +761,12 @@
     (begin
       (define-enum CURLE_SSL_CRL_BADFILE)
       (define-enum CURLE_SSL_ISSUER_ERROR)))
+;; (>= 7.21.5)
+(if "LIBCURL_VERSION_NUM >= 0x071505"
+    (begin
+      (define-enum CURLE_NOT_BUILT_IN)
+      (define-enum CURLE_UNKNOWN_OPTION)))
+
 (define-enum CURL_LAST)
 
 ;; CURLINFO
@@ -1048,6 +1060,11 @@
 (define-enum CURL_TIMECOND_IFUNMODSINCE)
 (define-enum CURL_TIMECOND_LASTMOD)
 
+;; .netrc option
+(define-enum CURL_NETRC_OPTIONAL)
+(define-enum CURL_NETRC_IGNORED)
+(define-enum CURL_NETRC_REQUIRED)
+
 ;; curlsocktype
 ; (>= 7.15.6)
 (if "LIBCURL_VERSION_NUM >= 0x070f06"
@@ -1113,6 +1130,14 @@
       (define-enum CURLPROTO_RTMPTE)
       (define-enum CURLPROTO_RTMPS)
       (define-enum CURLPROTO_RTMPTS)))
+
+;; TLS AUTH
+;; (>= 7.21.4)
+(if "LIBCURL_VERSION_NUM >= 0x071504"
+    (begin
+      (define-enum CURL_TLSAUTH_NONE)
+      (define-enum CURL_TLSAUTH_SRP)
+      (define-enum CURL_TLSAUTH_LAST)))
 
 ;; Local variables:
 ;; mode: scheme

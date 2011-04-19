@@ -1,3 +1,14 @@
+2011-04-19  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.2.12
+	libcurl version 7.21.5
+	Gauche-0.9.1
+	* curl.scm
+	add "--netrc", "--netrc-optional" and "--netrc-file" to %easy-options.
+	* curllib.stub
+	add CURLOPT_TLSAUTH_TYPE, CURLOPT_TLSAUTH_USERNAME and CURLOPT_TLSAUTH_PASSWORD
+
+
 2010-12-29  yuzawat  <suzdalenator@gmail.com>
 
 	* release 0.2.11

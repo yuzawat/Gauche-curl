@@ -7,7 +7,7 @@ Abstract:
  
 Author: yuzawat <suzdalenator at gmail.com>
 
-Version: 0.2.11 2010/12/29
+Version: 0.2.12 2011/04/19
 ======================================================================
 
 Module: curl
@@ -479,6 +479,9 @@ Function: curl-slist->list curl_slist
    mail-from
    max-filesize
  m|max-time
+ n|netrc
+   netrc-optional
+   netrc-file
    negotiate
    no-keepalive
    keepalive
@@ -551,8 +554,6 @@ Function: curl-slist->list curl_slist
  K|config
  M|manual
  N|no-buffer
- n|netrc
-   netrc-optional
  q
    remote-name-all
    retry
