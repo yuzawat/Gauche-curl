@@ -1,9 +1,9 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;;
 ;;; libcurl binding for gauche
-;;;  libcurl version 7.21.6: <http://curl.haxx.se/libcurl/>
+;;;  libcurl version 7.21.7: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2011/04/23 20:39.51"
+;;; Last Updated: "2011/08/20 23:41.25"
 ;;;
 ;;;  Copyright (c) 2011  yuzawat <suzdalenator@gmail.com>
 
@@ -622,7 +622,7 @@
 (dynamic-load "curl")
 
 ;; This module version
-(define-constant *gauche-curl-version* "0.2.13")
+(define-constant *gauche-curl-version* "0.2.14")
 
 ;; libcurl information
 (define-constant *curl-version-info* (curl-version-info))
@@ -1305,15 +1305,15 @@
 	  (_ c CURLOPT_POST 1)
 	  (if (#/^@/ data) (curl-open-input-file c data) (_ c CURLOPT_POSTFIELDS data))
 	  (if (fc "Largefile")
-	      (_ c CURLOPT_POSTFIELDSIZE_LARGE -1)
-	      (_ c CURLOPT_POSTFIELDSIZE -1))))
+	      (_ c CURLOPT_POSTFIELDSIZE_LARGE (string-length data))
+	      (_ c CURLOPT_POSTFIELDSIZE (string-length data)))))
       (when data-binary
 	(begin
 	  (_ c CURLOPT_POST 1)
 	  (if (#/^@/ data-binary) (curl-open-input-file c data-binary) (_ c CURLOPT_POSTFIELDS data-binary))
 	  (if (fc "Largefile")
-	      (_ c CURLOPT_POSTFIELDSIZE_LARGE -1)
-	      (_ c CURLOPT_POSTFIELDSIZE -1))))
+	      (_ c CURLOPT_POSTFIELDSIZE_LARGE (string-length data-binary))
+	      (_ c CURLOPT_POSTFIELDSIZE (string-length data-binary)))))
       (when data-urlencode
 	  (begin
 	    (_ c CURLOPT_POST 1)
@@ -1763,8 +1763,8 @@
 	  (curl-open-file hnd CURLOPT_READDATA fn)
 	  (curl-setopt! curl CURLOPT_POSTFIELDS #f)
 	  (if (fc "Largefile")
-	      (curl-setopt! curl CURLOPT_POSTFIELDSIZE_LARGE -1)
-	      (curl-setopt! curl CURLOPT_POSTFIELDSIZE -1)))
+	      (curl-setopt! curl CURLOPT_POSTFIELDSIZE_LARGE (sys-stat->size (sys-stat fn)))
+	      (curl-setopt! curl CURLOPT_POSTFIELDSIZE (sys-stat->size (sys-stat fn)))))
 	(error <curl-error> :message "curl handler is invalid."))))
 
 (define-method curl-open-header-file ((curl <curl>) filename . opts)
@@ -1895,13 +1895,20 @@
 		  (curl-setopt! curl (if (vc "7.21.6") CURLOPT_ACCEPT_ENCODING CURLOPT_ENCODING) "") ; "Content-Encoding: deflate, gzip", not compatible with rfc.http?
 		  (when host (set! headers (append `(:Host ,host) headers)))
 		  (when body 
-		    (cond ((string? body) (curl-setopt! curl CURLOPT_POSTFIELDS body))
+		    (cond ((string? body) 
+			   (curl-setopt! curl CURLOPT_POSTFIELDS body)
+			   (if (fc "Largefile")
+			       (curl-setopt! curl CURLOPT_POSTFIELDSIZE_LARGE (string-length body))
+			       (curl-setopt! curl CURLOPT_POSTFIELDSIZE (string-length body))))
 			  ((list? body)
 			   (receive (body boundary) (http-compose-form-data body #f request-encoding) ; rfc.http of Gauche 0.9
 			     (curl-setopt! curl CURLOPT_POSTFIELDS body)
 			     (set! headers `(:Mime-Version "1.0"
 					     :Content-Type ,#`"multipart/form-data; boundary=,boundary"
-					     ,@(delete-keyword! :Content-Type headers)))))
+					     ,@(delete-keyword! :Content-Type headers)))
+			     (if (fc "Largefile")
+			       (curl-setopt! curl CURLOPT_POSTFIELDSIZE_LARGE -1)
+			       (curl-setopt! curl CURLOPT_POSTFIELDSIZE -1))))
 			  (else (error "Invalid request-body format:" body))))
 		  (if no-redirect (curl-setopt! curl CURLOPT_FOLLOWLOCATION 0)
 		      (curl-setopt! curl CURLOPT_FOLLOWLOCATION 1))
