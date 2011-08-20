@@ -1,3 +1,13 @@
+2011-04-23  yuzawat  <suzdalenator@gmail.com>
+
+	* release 0.2.13
+	libcurl version 7.21.6
+	* curl.scm
+	add "--tr-encoding" to %easy-options.
+	* curllib.stub
+	add CURLOPT_TRANSFER_ENCODING
+
+	
 2011-04-19  yuzawat  <suzdalenator@gmail.com>
 
 	* release 0.2.12

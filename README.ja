@@ -6,7 +6,7 @@ Abstract:
  
 Author: yuzawat <suzdalenator ＠ gmail.coml>
 
-Version: 0.2.12 2011/04/19
+Version: 0.2.13 2011/04/23
 ======================================================================
 
 Module: curl
@@ -458,6 +458,7 @@ Function: curl-slist->list curl_slist
  t|telnet-option
    tftp-blksize
  T|upload-file
+  |tr-encoding
  u|user
  U|proxy-user
    url
@@ -528,7 +529,7 @@ Todo
 
 
 動作確認環境（と云っても、"make check"が通るだけ）
-- Mac OX X 10.6.5 (libcurl 7.21.3. + Gauche 0.9.1)
+- Mac OX X 10.6.7 (libcurl 7.21.6. + Gauche 0.9.1)
 - Ubuntu 10.10 Maverick Meerkat (libcurl 7.21.3. + Gauche 0.9.1)
 - Ubuntu 10.10 Maverick Meerkat (libcurl 7.21.0. + Gauche 0.9)
 - Mac OX X 10.6.4 (libcurl 7.21.2. + Gauche 0.9)

@@ -5,7 +5,7 @@ dnl $Id: template.configure.ac,v 1.3 2005/11/05 00:54:52 shirok Exp $
 dnl
 
 AC_PREREQ(2.54)
-AC_INIT(Gauche-curl, 0.2.12, shiro@acm.org)
+AC_INIT(Gauche-curl, 0.2.13, shiro@acm.org)
 dnl If you want to use the system name (OS, architecture, etc) in the
 dnl configure, uncomment the following line.  In such a case, you need
 dnl to copy config.guess and config.sub from automake distribution.

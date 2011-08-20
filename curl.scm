@@ -1,9 +1,9 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;;
 ;;; libcurl binding for gauche
-;;;  libcurl version 7.21.5: <http://curl.haxx.se/libcurl/>
+;;;  libcurl version 7.21.6: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2011/04/19 22:07.29"
+;;; Last Updated: "2011/04/23 20:39.51"
 ;;;
 ;;;  Copyright (c) 2011  yuzawat <suzdalenator@gmail.com>
 
@@ -416,6 +416,8 @@
    CURLOPT_TLSAUTH_TYPE
    CURLOPT_TLSAUTH_USERNAME
    CURLOPT_TLSAUTH_PASSWORD
+   CURLOPT_ACCEPT_ENCODING
+   CURLOPT_TRANSFER_ENCODING
 
    ;; curl information code
    CURLINFO_NONE
@@ -604,7 +606,9 @@
    CURLPROTO_RTMPTE
    CURLPROTO_RTMPS
    CURLPROTO_RTMPTS
-   CURLPROTO_ALL))
+   CURLPROTO_ALL
+
+   *gauche-curl-version*))
 
 (select-module curl)
 
@@ -616,6 +620,9 @@
 
 ;;; Loads extension
 (dynamic-load "curl")
+
+;; This module version
+(define-constant *gauche-curl-version* "0.2.13")
 
 ;; libcurl information
 (define-constant *curl-version-info* (curl-version-info))
@@ -1064,6 +1071,7 @@
 	 ;; --trace (not implemented)
 	 ;; --trace-ascii (not implemented)
 	 ;; --trace-time (not implemented)
+	 (tr-encoding "tr-encoding" #f)
 	 (user "u|user=s" #f)
 	 (proxy-user "U|proxy-user=s" #f)
 	 (urlstr "url=s" #f)
@@ -1162,7 +1170,7 @@
 	    (cond ((#/(^.+)\;auto$/ referer)
 		   => (lambda (m) (unless (= (string-length (m 1)) 0) (_ c CURLOPT_REFERER (m 1)))))))
 	  (_ c CURLOPT_REFERER #f))
-      (when compressed (_ c CURLOPT_ENCODING ""))
+      (when compressed (_ c (if (vc "7.21.6") CURLOPT_ACCEPT_ENCODING CURLOPT_ENCODING) ""))
       (if fail (_ c CURLOPT_FAILONERROR 1) (_ c CURLOPT_FAILONERROR 0))
       (when get (_ c CURLOPT_HTTPGET 1))
       (when header (_ c CURLOPT_HTTPHEADER (string-split header #\,)))
@@ -1192,6 +1200,9 @@
 			      (_ c CURLOPT_TIMECONDITION CURL_TIMECOND_NONE))
 			  ;; FIXME: CURLOPT_TIMEVALUE is not reflected.
 			  (_ c CURLOPT_TIMEVALUE (curl-getdate timeval))))))))
+      (when (vc "7.21.6")
+	(when tr-encoding
+	  (_ c CURLOPT_TRANSFER_ENCODING 1)))
       ;; HTTP Form
       (when (or form form-string)
 	(begin
@@ -1881,7 +1892,7 @@
 		      (curl-setopt! curl CURLOPT_CUSTOMREQUEST (symbol->string method)))
 		  (curl-setopt! curl CURLOPT_USERAGENT (http-user-agent))
 		  (curl-setopt! curl CURLOPT_HTTP_VERSION CURL_HTTP_VERSION_NONE)
-		  (curl-setopt! curl CURLOPT_ENCODING "") ; "Content-Encoding: deflate, gzip", not compatible with rfc.http?
+		  (curl-setopt! curl (if (vc "7.21.6") CURLOPT_ACCEPT_ENCODING CURLOPT_ENCODING) "") ; "Content-Encoding: deflate, gzip", not compatible with rfc.http?
 		  (when host (set! headers (append `(:Host ,host) headers)))
 		  (when body 
 		    (cond ((string? body) (curl-setopt! curl CURLOPT_POSTFIELDS body))

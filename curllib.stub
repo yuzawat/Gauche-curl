@@ -1,7 +1,7 @@
 ;;; -*- coding: utf-8; mode: scheme -*-
 ;;; curllib.stub
 ;;; 
-;;; Last Updated: "2011/04/19 20:33.27"
+;;; Last Updated: "2011/04/25 23:55.49"
 ;;;
 ;;;  Copyright (c) 2011  yuzawat <suzdalenator@gmail.com>
 
@@ -478,7 +478,7 @@
 (define-enum CURLOPT_CAPATH)
 (define-enum CURLOPT_SHARE)
 (define-enum CURLOPT_PROXYTYPE)
-(define-enum CURLOPT_ENCODING)
+(define-enum CURLOPT_ENCODING) ; alias of ACCEPT_ENCODING from 7.21.6
 (define-enum CURLOPT_HTTP200ALIASES)
 (define-enum CURLOPT_UNRESTRICTED_AUTH)
 (define-enum CURLOPT_FTP_USE_EPRT)
@@ -661,6 +661,11 @@
       (define-enum CURLOPT_TLSAUTH_TYPE)
       (define-enum CURLOPT_TLSAUTH_USERNAME)
       (define-enum CURLOPT_TLSAUTH_PASSWORD)))
+; (>= 7.21.6)
+(if "LIBCURL_VERSION_NUM >= 0x071506"
+    (begin
+      (define-enum CURLOPT_ACCEPT_ENCODING)
+      (define-enum CURLOPT_TRANSFER_ENCODING)))
 
 (define-enum CURLOPTTYPE_OFF_T)
 
