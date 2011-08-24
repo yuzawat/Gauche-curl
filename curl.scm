@@ -3,7 +3,7 @@
 ;;; libcurl binding for gauche
 ;;;  libcurl version 7.21.7: <http://curl.haxx.se/libcurl/>
 ;;;
-;;; Last Updated: "2011/08/20 23:41.25"
+;;; Last Updated: "2011/08/24 23:24.11"
 ;;;
 ;;;  Copyright (c) 2011  yuzawat <suzdalenator@gmail.com>
 
@@ -1920,7 +1920,10 @@
 				(curl-setopt! curl CURLOPT_PROXY proxy)))
 		  (unless (null? headers)
 		    (curl-setopt! curl CURLOPT_HTTPHEADER
-				  (map (lambda (h) (string-append (keyword->string (car h)) ": " (cadr h))) (slices headers 2))))
+				  ;; workaround for libcurl restriction -> http://curl.haxx.se/mail/lib-2010-08/0171.html
+				  (map (lambda (h) (string-append (keyword->string (car h)) ": " 
+								  (if (string-null? (cadr h)) "\r\nDummy-Dummy:" (cadr h)))) 
+				       (slices headers 2))))
 		  ;; 'options' adds setting unconfigable options from http-* interface, 
 		  ;;  like ":options `((,CURLOPT_SSL_VERIFYPEER . #f)(,CURLOPT_SSL_VERIFYHOST . 1)))"
 		  (when options
